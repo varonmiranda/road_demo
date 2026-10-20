@@ -4,8 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hospital Salting Advisor</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="data/basemap.js"></script>
@@ -19,203 +17,111 @@
     ? '<script src="data/live.js' + (STATIC ? "" : "?v=" + Date.now()) + '"><\/script>'
     : '<script src="data/replay.js"><\/script>');
 </script>
-<style>
-/* Map-first decision product: the city fills the screen, one frosted card answers act / where / when / what.
-   Everything analytical lives in a slide-out Details panel. One dark winter world. */
-:root{
-  color-scheme: dark;
-  --bg:#060b12; --map:#0a121c; --glass:rgba(12,20,31,.72); --glass-2:rgba(16,26,40,.86); --solid:#0d1622;
-  --ink:#edf4fb; --ink-2:#a9b9cb; --muted:#6e8197; --line:rgba(150,195,240,.11); --line-2:rgba(150,195,240,.22);
-  --ice:#8fd0ff; --red:#ff5252; --amber:#ffb224; --blue:#4fa3ff; --neutral:#2c3b4e; --planned:#3fdc95;
-  --state:var(--ice);
-  --bm-land:#0b131e; --bm-water:#0e2135; --bm-road:#152030; --bm-edge:#22324a;
-  --brine:#2bc4bd; --prewet:#4f8ff7; --blend:#a27df0; --dry:#e3913e; --none:#2c3a4b; --warn:#ffb224; --bad:#ff7a6e; --crit:#ff5252;
-  --cold:#4fa3ff; --good:#3fdc95; --accent:#8fd0ff; --air:#6e8197; --grade:#8fd0ff; --bridge:#ff7a6e; --snow:#24496b;
-  --f-ui:"Inter",-apple-system,"Segoe UI",Roboto,sans-serif; --f-num:"Space Grotesk","Inter",-apple-system,sans-serif;
-}
-:root[data-state="deploy"]{--state:var(--red)} :root[data-state="prepare"]{--state:var(--amber)}
-:root[data-state="monitor"]{--state:var(--blue)} :root[data-state="clear"]{--state:var(--ice)} :root[data-state="planned"]{--state:var(--planned)}
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-html,body{height:100%;margin:0;background:var(--bg);overflow:hidden}
-body{color:var(--ink);font:14px/1.5 var(--f-ui);font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
-button,select{font:inherit;color:var(--ink)}
-:focus-visible{outline:2px solid var(--ice);outline-offset:2px;border-radius:8px}
-.glass{background:var(--glass);border:1px solid var(--line);-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);box-shadow:0 24px 60px rgba(0,0,0,.45)}
-
-/* the map is the product */
-#map{position:fixed;inset:0;background:var(--map)}
-#mapSnow{position:fixed;inset:0;z-index:400;pointer-events:none;width:100%;height:100%}
-.vignette{position:fixed;inset:0;z-index:401;pointer-events:none;background:
-  linear-gradient(180deg,rgba(6,11,18,.85),rgba(6,11,18,0) 120px),
-  radial-gradient(120% 90% at 50% 50%,transparent 55%,rgba(3,6,10,.6))}
-
-/* top bar floats over the map */
-.top{position:fixed;z-index:600;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 0}
-.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
-.mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--line-2);background:rgba(143,208,255,.10)}
-.mark svg{width:16px;height:16px;color:var(--ice)}
-.brand b{font:600 14px var(--f-ui);white-space:nowrap}
-.seg{display:inline-flex;padding:3px;border-radius:11px}
-.seg a{font:500 12.5px var(--f-ui);padding:6px 12px;border-radius:8px;color:var(--ink-2);text-decoration:none;white-space:nowrap}
-.seg a.on{background:rgba(143,208,255,.16);color:var(--ink)}
-.btn-top{border:1px solid var(--line-2);border-radius:10px;padding:7px 12px;font:500 12.5px var(--f-ui);cursor:pointer;background:var(--glass);color:var(--ink);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-.btn-top:hover{border-color:var(--ice)}
-
-/* the decision card */
-.card{position:fixed;z-index:600;left:18px;top:calc(70px + env(safe-area-inset-top,0px));width:360px;border-radius:20px;padding:20px 20px 16px;
-  border-color:color-mix(in srgb,var(--state) 38%,var(--line));transition:border-color .6s}
-.card::before{content:"";position:absolute;inset:0;border-radius:20px;pointer-events:none;
-  background:radial-gradient(120% 70% at 0% 0%,color-mix(in srgb,var(--state) 16%,transparent),transparent 60%);transition:background .6s}
-.chip{position:relative;display:inline-flex;align-items:center;gap:8px;font:600 10.5px var(--f-ui);letter-spacing:.16em;text-transform:uppercase;color:var(--state);transition:color .6s}
-.led{width:8px;height:8px;border-radius:50%;background:var(--state);box-shadow:0 0 10px var(--state)}
-:root[data-state="deploy"] .led,:root[data-state="prepare"] .led{animation:blink 1.6s ease-in-out infinite}
-@keyframes blink{50%{opacity:.35}}
-.verb{position:relative;margin:12px 0 6px;font:700 32px/1.02 var(--f-num);letter-spacing:.01em;text-transform:uppercase;color:var(--ink)}
-.when{position:relative;font-size:15px;color:var(--ink-2)}
-.when b{font:600 17px var(--f-num);color:var(--state);transition:color .6s}
-.what{position:relative;margin:14px 0 16px;font:500 15px var(--f-num);color:var(--ink);letter-spacing:.01em}
-.what span{color:var(--muted);margin:0 7px}
-.cta{position:relative;width:100%;padding:14px 16px;border:0;border-radius:12px;cursor:pointer;font:700 14px var(--f-num);letter-spacing:.06em;
-  background:var(--state);color:#04101c;box-shadow:0 10px 30px color-mix(in srgb,var(--state) 38%,transparent);transition:background .6s, box-shadow .6s, filter .2s}
-.cta:hover{filter:brightness(1.07)}
-.cta.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-2);box-shadow:none}
-.why{position:relative;margin:14px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)}
-.more{position:relative;margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.more button{background:none;border:0;padding:0;color:var(--ice);font:600 12.5px var(--f-ui);cursor:pointer}
-.cardnote{position:relative;display:block;margin-top:6px;font-size:11px;color:var(--muted)}
-.cardnote:empty{display:none}
-.card .body > *{transition:opacity .35s, transform .35s}
-.card.thinking .body > *{opacity:0;transform:translateY(6px)}
-.thinkline{position:relative;display:none;margin-top:14px;height:2px;border-radius:2px;overflow:hidden;background:var(--line)}
-.card.thinking .thinkline{display:block}
-.thinkline::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--ice),transparent);animation:sweep 1s linear infinite}
-@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
-.reveal .verb,.reveal .when,.reveal .what,.reveal .cta,.reveal .why{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
-.reveal .when{animation-delay:.05s}.reveal .what{animation-delay:.1s}.reveal .cta{animation-delay:.16s}.reveal .why{animation-delay:.22s}
-@keyframes rise{from{opacity:0;transform:translateY(8px)}}
-
-/* time pill + legend */
-.timepill{position:fixed;z-index:600;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:12px;
-  padding:8px 14px 8px 8px;border-radius:999px;width:min(560px,calc(100% - 36px))}
-.play{flex:none;width:32px;height:32px;border-radius:50%;border:1px solid var(--line-2);background:transparent;cursor:pointer;font-size:11px;display:grid;place-items:center}
-.timepill input{flex:1;min-width:0;accent-color:var(--state)}
-.timepill b{flex:none;font:500 12.5px var(--f-num);white-space:nowrap}
-.legend{position:fixed;z-index:600;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:14px;font-size:11.5px;color:var(--ink-2)}
-.legend span{display:flex;align-items:center;gap:8px}
-.legend i{width:16px;height:3px;border-radius:2px}
-.leaflet-container{background:var(--map);font-family:var(--f-ui)}
-.leaflet-control-zoom{margin-right:18px!important;margin-bottom:150px!important;border:0!important}
-.leaflet-control-zoom a{background:var(--glass-2)!important;color:var(--ink)!important;border:1px solid var(--line-2)!important}
-.leaflet-control-attribution{background:transparent!important;color:var(--muted)!important;font-size:9.5px!important}
-.leaflet-control-attribution a{color:var(--ink-2)!important}
-.leaflet-popup-content-wrapper,.leaflet-popup-tip,.leaflet-tooltip{background:var(--solid);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 12px 30px rgba(0,0,0,.45)}
-.leaflet-popup-content{font-size:12px;line-height:1.45;margin:11px 13px}
-.leaflet-popup-content table{margin-top:4px;font-size:11.5px} .leaflet-popup-content td{padding:1px 4px}
-.leaflet-tooltip.hl{background:transparent;border:0;box-shadow:none;color:var(--ink-2);font:600 10px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:0;text-shadow:0 1px 3px #000}
-.leaflet-tooltip.hl::before{display:none}
-.halo{animation:halo 2.4s ease-in-out infinite}
-@keyframes halo{50%{opacity:.25}}
-path.route{stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(63,220,149,.85))}
-
-/* details: everything secondary */
-.drawer{position:fixed;z-index:700;top:0;right:0;bottom:0;width:min(440px,100%);overflow-y:auto;padding:calc(18px + env(safe-area-inset-top,0px)) 20px calc(28px + env(safe-area-inset-bottom,0px));
-  border-radius:20px 0 0 20px;transform:translateX(105%);transition:transform .45s cubic-bezier(.2,.7,.2,1)}
-.drawer.open{transform:none}
-.dhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.dhead h2{margin:0;font:600 15px var(--f-ui)}
-.x{width:32px;height:32px;border-radius:10px;border:1px solid var(--line-2);background:transparent;cursor:pointer}
-.sec{padding:16px 0;border-top:1px solid var(--line)}
-.sec:first-of-type{border-top:0}
-.sec h3{margin:0 0 10px;font:600 10.5px var(--f-ui);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
-.sec p{margin:6px 0;font-size:13px;color:var(--ink-2)}
-.sec p b,.sec li b{color:var(--ink)}
-.list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
-.list li{display:grid;grid-template-columns:16px 1fr;gap:8px;font-size:13px;color:var(--ink-2)}
-.list li::before{content:"✓";color:var(--state)}
-.facts{display:grid;gap:8px}
-.fact{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--ink-2);border-bottom:1px solid var(--line);padding-bottom:7px}
-.fact b{font:600 13.5px var(--f-num);color:var(--ink);text-align:right}
-.fact[data-hot="1"] b{color:var(--state)}
-#tl{display:block;width:100%;height:156px;overflow:visible}
-#chart{width:100%;height:140px;display:block}
-#chart text{fill:var(--muted);font-size:10px;font-family:var(--f-ui)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-select.s{background:var(--solid);border:1px solid var(--line-2);border-radius:8px;padding:6px 8px;font-size:12.5px;max-width:100%}
-.tablewrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-th,td{text-align:left;padding:6px 5px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:500;font-size:11px}
-td.n{text-align:right;font-family:var(--f-num);white-space:nowrap}
-.note{font-size:12px;color:var(--muted)}
-.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.kv div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.kv .v{font:600 18px var(--f-num)} .kv .l{font-size:11.5px;color:var(--muted)}
-.btn-s{background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
-.drill{margin-top:8px;padding:8px 12px;border-radius:10px;font-size:12.5px;border:1px solid var(--amber);background:rgba(255,178,36,.10)}
-a{color:var(--ice)}
-.sw2{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
-
-/* phone: card becomes a bottom sheet, legend tucks away */
-@media (max-width:700px){
-  .brand b{display:none}
-  .card{left:12px;right:12px;width:auto;top:auto;bottom:calc(72px + env(safe-area-inset-bottom,0px));padding:16px}
-  .verb{font-size:26px}
-  .legend{display:none}
-  .timepill{bottom:calc(12px + env(safe-area-inset-bottom,0px));width:calc(100% - 24px)}
-  .leaflet-control-zoom{display:none}
-  .drawer{border-radius:0}
-}
-@media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
-</style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<div id="map"></div>
-<div class="vignette" aria-hidden="true"></div>
-
 <header class="top">
   <div class="brand">
     <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M13.6 4.75 2.4 11.25M8 1.5 6.6 3M8 1.5 9.4 3M8 14.5 6.6 13M8 14.5l1.4-1.5"/></svg></div>
     <b>Hospital Salting Advisor</b>
   </div>
-  <nav class="seg glass" aria-label="Data source"><a href="#replay" id="mReplay">Jan 2025 storm</a><a href="#live" id="mLive">Live forecast</a></nav>
+  <nav class="seg" aria-label="Data source"><a href="#replay" id="mReplay">Jan 2025 storm</a><a href="#live" id="mLive">Live forecast</a></nav>
   <button class="btn-top" id="openDetails">Details</button>
+  <span id="srcActions"></span>
 </header>
 
-<section class="card glass" id="card" aria-live="polite">
-  <div class="chip"><span class="led"></span><span id="chip">Analyzing</span></div>
-  <div class="thinkline"></div>
-  <div class="body">
-    <div class="verb" id="verb">—</div>
-    <div class="when" id="when"></div>
-    <div class="what" id="what"></div>
-    <button class="cta" id="cta">Approve plan</button>
-    <p class="why" id="why"></p>
-    <div class="more"><button id="seeWhy">See why and details →</button></div>
-    <small class="cardnote" id="cardNote"></small>
+<main class="deck">
+  <div class="col">
+    <section class="card hero" id="card" aria-live="polite">
+      <img class="pic" src="https://media.base44.com/images/public/6ad6c95e37ecf85845d96c4c/b558e8103_generated_fb29d896.jpg" alt="Hospital entrance driveway in fresh snow with a waiting plow at dusk">
+      <div class="scr"></div>
+      <div class="body in">
+        <div class="chip"><span class="led"></span><span id="chip">Analyzing</span></div>
+        <div class="thinkline"></div>
+        <div class="verb" id="verb">&mdash;</div>
+        <div class="when" id="when"></div>
+        <div class="what" id="what"></div>
+        <button class="cta" id="cta">Approve plan</button>
+        <p class="why" id="why"></p>
+        <div class="more"><button id="seeWhy">See why and details &rarr;</button></div>
+        <small class="cardnote" id="cardNote"></small>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Why this decision</h3>
+      <p class="p" id="engOut"></p>
+      <ul class="list" id="whyList"></ul>
+    </section>
+
+    <section class="card">
+      <h3>Deciding factors</h3>
+      <div class="facts" id="factors"></div>
+    </section>
+
+    <section class="card">
+      <h3>Timeline &middot; next 24 h</h3>
+      <svg id="tl" role="img" aria-label="Decision timeline"></svg>
+      <p id="tlq" class="note"></p>
+    </section>
+
+    <section class="card where">
+      <img class="pic" src="https://media.base44.com/images/public/6ad6c95e37ecf85845d96c4c/cf633ab9d_generated_71e5b289.jpg" alt="Aerial view of DC radial avenues under light snow">
+      <div class="scr"></div>
+      <div class="in">
+        <div class="top"><h3>Where</h3></div>
+        <p class="p" id="whereTxt"></p>
+        <div class="row"><label class="n" for="layer">Map layer</label>
+          <select class="s" id="layer"><option value="status">Operational status</option><option value="risk">Freeze risk if untreated</option><option value="advisor">Advisor actions this hour</option><option value="blanket">Blanket practice this hour</option><option value="saved">Salt saved so far</option><option value="cold">Cold spots (Earth Engine)</option><option value="tier">Priority tiers</option></select></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Forecast</h3>
+      <svg id="chart" preserveAspectRatio="none" role="img" aria-label="Forecast temperatures and snowfall"></svg>
+      <p class="note" id="cond"></p>
+    </section>
+
+    <section class="card">
+      <h3>Full 24-hour plan</h3>
+      <div class="row" style="margin:0 0 10px"><select class="s" id="issue" aria-label="Plan window"></select><select class="s" id="hosp" aria-label="Hospital"></select></div>
+      <div id="callouts"></div>
+      <div class="tw"><table id="plantbl"><thead><tr><th>When</th><th>Action</th><th>Material</th><th class="n">Lane-mi</th><th class="n">lb/ln-mi</th><th class="n">Tons</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <h3>Impact vs blanket practice</h3>
+      <div class="kv" id="impact"></div>
+      <p class="note" id="sens"></p>
+    </section>
+
+    <section class="card">
+      <h3>Model inputs</h3>
+      <div id="method"></div>
+    </section>
   </div>
-</section>
 
-<div class="timepill glass">
-  <button class="play" id="play" aria-label="Play through the forecast">▶</button>
-  <input type="range" id="slider" min="0" value="0" aria-label="Decision time">
-  <b id="now"></b>
-</div>
-<div class="legend glass" id="legend"></div>
+  <div class="mapcol">
+    <div class="frame">
+      <div id="map"></div>
+      <div class="clock"><i></i><span id="now"></span></div>
+    </div>
+    <div class="ruler">
+      <button class="play" id="play" aria-label="Play through the forecast">&#9654;</button>
+      <input type="range" id="slider" min="0" value="0" aria-label="Decision time">
+      <b id="nowRuler"></b>
+    </div>
+    <div class="legend glass" id="legend"></div>
+  </div>
+</main>
 
-<aside class="drawer glass" id="drawer" aria-label="Details">
-  <div class="dhead"><h2>Details</h2><button class="x" id="closeDetails" aria-label="Close details">✕</button></div>
+<div class="vignette" aria-hidden="true"></div>
+
+<aside class="drawer" id="drawer" aria-label="Details">
+  <div class="dhead"><h2>Details</h2><button class="x" id="closeDetails" aria-label="Close details">&#10005;</button></div>
   <div id="source" class="note"></div>
-  <div class="sec"><h3>Why this decision</h3><p id="engOut"></p><ul class="list" id="whyList"></ul></div>
-  <div class="sec"><h3>Timeline · next 24 h</h3><svg id="tl" role="img" aria-label="Decision timeline"></svg><p id="tlq" class="note"></p></div>
-  <div class="sec"><h3>Deciding factors</h3><div class="facts" id="factors"></div></div>
-  <div class="sec"><h3>Where</h3><p id="whereTxt"></p><div class="row"><label class="note" for="layer">Map layer</label>
-    <select class="s" id="layer"><option value="status">Operational status</option><option value="risk">Freeze risk if untreated</option><option value="advisor">Advisor actions this hour</option><option value="blanket">Blanket practice this hour</option><option value="saved">Salt saved so far</option><option value="cold">Cold spots (Earth Engine)</option><option value="tier">Priority tiers</option></select></div></div>
-  <div class="sec"><h3>Forecast</h3><svg id="chart" preserveAspectRatio="none" role="img" aria-label="Forecast temperatures and snowfall"></svg><p class="note" id="cond"></p></div>
-  <div class="sec"><h3>Full 24-hour plan</h3><div class="row"><select class="s" id="issue" aria-label="Plan window"></select><select class="s" id="hosp" aria-label="Hospital"></select></div>
-    <div id="callouts"></div><div class="tablewrap"><table id="plantbl"><thead><tr><th>When</th><th>Action</th><th>Material</th><th class="n">Lane-mi</th><th class="n">lb/ln-mi</th><th class="n">Tons</th></tr></thead><tbody></tbody></table></div></div>
-  <div class="sec"><h3>Impact vs blanket practice</h3><div class="kv" id="impact"></div><p class="note" id="sens"></p></div>
-  <div class="sec"><h3>Model inputs</h3><div id="method"></div></div>
+  <div class="sec"><h3>Model inputs</h3><p>Weather, per-road pavement temperature and the Minnesota salt bands behind every number on the deck are described in the Model inputs card.</p></div>
+  <div class="sec"><h3>Analytics</h3><p><a href="regression.html">Open the analytics: factor charts, what-if simulator, satellite regressions &rarr;</a></p></div>
 </aside>
 
 <script>
@@ -407,7 +313,7 @@ function renderCard(d, animate){
 }
 function renderAll(animate){
   const d = current = decide(t);
-  document.getElementById("now").textContent = fmtT(t);
+  document.getElementById("now").textContent = document.getElementById("nowRuler").textContent = fmtT(t);
   clearTimeout(revealTimer);
   // demo moment: entering an action state from calm, the card "thinks", then reveals the plan
   const entering = animate && acting(d.state) && !acting(prevState||"") && !REDUCED;
@@ -426,8 +332,7 @@ document.getElementById("cta").onclick = () => {
   const d = current;
   if (!acting(d.state) || !d.pass) { acked = t; renderCard(d,false); return; }
   approved = isPlanned() ? null : {t, at:new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})};
-  renderCard(d, false); paint(); drawRoutes(isPlanned());
-  if (drawer.classList.contains("open")) drawTimeline(d);
+  renderCard(d, false); paint(); drawRoutes(isPlanned()); drawTimeline(d);
 };
 
 // ---------- details drawer (everything secondary)
@@ -447,7 +352,7 @@ function renderDetails(d){
     : p ? `Next pass covers ${p.lm.toFixed(0)} lane-miles around ${esc(listJoin(hNames(p.hospitals)))}.` : `No corridor needs treatment in the next 24 hours.`;
   const w = D.weather[t];
   document.getElementById("cond").innerHTML = `Now: air ${w.air.toFixed(0)}°F · dew point ${w.dew.toFixed(0)}°F · cloud ${Math.round(w.cloud)}% · ${w.snow>0?`snow ${w.snow.toFixed(2)} in/h`:w.precip>0?`precip ${w.precip.toFixed(2)} in/h`:"dry"} · typical road ${D.pavement_median[t].toFixed(0)}°F · coldest bridge ${BRIDGE_MIN[t].toFixed(0)}°F`;
-  if (drawer.classList.contains("open")) { drawTimeline(d); drawChart(); }
+  drawTimeline(d); drawChart();
 }
 
 // ---------- timeline (drawer): why act at this exact time
@@ -515,9 +420,7 @@ const lines = SEG.map(s => L.polyline(s.coords, {renderer, weight:3, opacity:.95
 const routeR = L.svg({padding:.5}), routeGroup = L.layerGroup().addTo(map);
 const CORRIDOR = L.latLngBounds(SEG.flatMap(s=>s.coords));
 // frame the corridors in the space the card leaves free
-const frame = () => isPhone()
-  ? map.fitBounds(CORRIDOR, {paddingTopLeft:[16,70], paddingBottomRight:[16, (card.offsetHeight||300)+90]})
-  : map.fitBounds(CORRIDOR, {paddingTopLeft:[card.offsetWidth+50, 80], paddingBottomRight:[150, 90]});
+const frame = () => { const pad = isPhone() ? 16 : 26; map.fitBounds(CORRIDOR, {paddingTopLeft:[pad, pad], paddingBottomRight:[pad, pad]}); };
 const CLUSTER = {mwhc:"Washington Hosp. Ctr · Children's · VA", cnh:null, va:null};
 for (const h of D.hospitals) {
   const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#05090f", weight:2, fillColor:"#edf4fb", fillOpacity:1}).addTo(map);
@@ -599,7 +502,7 @@ function segPopup(s, ll){
 // ---------- snow over the map, only while snow is falling at the decision time
 const snowRate = () => current ? current.nowSnow : 0;
 const DPR = () => Math.min(2, devicePixelRatio||1);
-const msnow = document.createElement("canvas"); msnow.id="mapSnow"; document.body.insertBefore(msnow, document.querySelector(".vignette"));
+const msnow = document.createElement("canvas"); msnow.id="mapSnow"; document.querySelector(".frame").append(msnow, document.querySelector(".vignette"));
 const mctx = msnow.getContext("2d"); let flakes = [], mW = 0, mH = 0;
 function sizeSnow(){ mW=innerWidth; mH=innerHeight; msnow.width=mW*DPR(); msnow.height=mH*DPR(); mctx.setTransform(DPR(),0,0,DPR(),0,0);
   flakes = Array.from({length:Math.round(mW*mH/4200)}, () => ({x:Math.random()*mW, y:Math.random()*mH, r:0.6+Math.random()*1.7, v:0.35+Math.random()*0.7, d:Math.random()*6.28})); }
@@ -696,9 +599,10 @@ ${LIVE ? `<p><b>Forecast.</b> ${LIVE.office}, issued ${LIVE.issued ? new Date(LI
 const src = document.getElementById("source");
 if (LIVE) {
   const iss = LIVE.issued ? new Date(LIVE.issued).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}) : "?";
-  src.innerHTML = `${STATIC ? "Snapshot of the" : "Live"} NWS forecast issued ${iss}.` + (STATIC ? "" :
-    ` <span class="row" style="margin-top:8px"><button class="btn-s" id="refresh">↻ Refresh forecast</button><button class="btn-s" id="drillBtn">Drill −25°F</button><span id="rmsg"></span></span>`)
+  src.innerHTML = `${STATIC ? "Snapshot of the" : "Live"} NWS forecast issued ${iss}.`
     + (LIVE.drill_f ? `<div class="drill"><b>Drill, not a real forecast:</b> shifted ${LIVE.drill_f}°F colder.</div>` : "");
+  if (!STATIC) document.getElementById("srcActions").innerHTML =
+    `<button class="btn-top" id="refresh">↻ Refresh forecast</button><button class="btn-top" id="drillBtn">Drill −25°F</button><span id="rmsg"></span>`;
   const go = async drill => { const msg = document.getElementById("rmsg"); msg.textContent = "Fetching…";
     try { const r = await fetch(`/api/refresh?drill=${drill}`, {method:"POST"}); const j = await r.json(); if (!j.ok) throw new Error(j.error); location.reload(); }
     catch (e) { msg.textContent = (e instanceof TypeError || e instanceof SyntaxError) ? "Needs the demo server" : `NWS error: ${e.message}`; } };
@@ -714,7 +618,7 @@ let timer=null;
 document.getElementById("play").onclick = e => { const b = e.currentTarget;
   if (timer){ clearInterval(timer); timer=null; b.textContent="▶"; return; }
   b.textContent="❚❚"; timer=setInterval(()=>{ if(t>=H-1){ clearInterval(timer); timer=null; b.textContent="▶"; } else setT(t+1); }, 900); };
-addEventListener("resize", () => { sizeSnow(); if (drawer.classList.contains("open")) { drawTimeline(current); drawChart(); } });
+addEventListener("resize", () => { sizeSnow(); drawTimeline(current); drawChart(); });
 
 const start = LIVE ? 0 : Math.max(0, D.hours.findIndex(h=>h.endsWith("01-05T18:00")));
 planTable(); impact(); sizeSnow();

@@ -1,0 +1,227 @@
+/* Hospital Salting Advisor — Split deck.
+   Two panels: the decision on the left, the city on the right.
+   Same model, same data, same behaviour — larger shapes, fewer nested surfaces, more contrast.
+   All map colours (roads, layers, legend, popups) read from the tokens below, so the two panels stay in sync. */
+
+:root{
+  color-scheme:dark;
+  /* surfaces */
+  --bg:#1E3A52;          /* deck */
+  --panel:#2B5578;       /* cards, bars */
+  --panel-2:#16304a;     /* wells, seg control */
+  --panel-3:#244a69;     /* legend, popups */
+  --line:#3d6a91;        /* every hairline */
+  --line-2:#2B5578;
+  /* ink */
+  --ink:#F4F8FB; --ink-2:#d3e0ec; --muted:#a9c0d4; --muted-2:#b7cadb;
+  /* action ramp + map ramps (names kept from the model so the JS keeps working) */
+  --ice:#FFCE5C; --red:#E5604A; --amber:#FFCE5C; --blue:#4fa3ff; --neutral:#5b7a94; --planned:#3fdc95;
+  --state:var(--ice);
+  --bm-land:#1E3A52; --bm-water:#16304a; --bm-road:#2B5578; --bm-edge:#3d6a91;
+  --brine:#2bc4bd; --prewet:#4f8ff7; --blend:#a27df0; --dry:#e3913e; --none:#5b7a94;
+  --warn:#9fd4ff; --bad:#79b8f5; --crit:#ff7a6e;
+  --cold:#8cc4ff; --good:#3fdc95; --accent:#c9d8e6; --air:#a9c0d4;
+  --grade:#F4F8FB; --bridge:#8cc4ff; --snow:#E5604A;
+  --f-ui:"Avenir Next","Century Gothic","Segoe UI",Helvetica,Arial,sans-serif;
+  --f-num:"Avenir Next","Century Gothic","Segoe UI",Helvetica,Arial,sans-serif;
+}
+:root[data-state="deploy"]{--state:var(--red)}
+:root[data-state="prepare"]{--state:var(--amber)}
+:root[data-state="monitor"]{--state:var(--blue)}
+:root[data-state="clear"]{--state:var(--ice)}
+:root[data-state="planned"]{--state:var(--planned)}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden}
+body{color:var(--ink);font:14px/1.5 var(--f-ui);font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+button,select{font:inherit;color:var(--ink);font-family:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:8px}
+a{color:var(--amber)}
+
+.glass{background:var(--panel);border:1px solid var(--line);border-radius:18px}
+
+/* ---------- top bar ---------- */
+.top{position:relative;z-index:600;display:flex;align-items:center;gap:10px;padding:16px 18px 14px;height:62px}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+.mark{flex:none;width:32px;height:32px;border-radius:10px;background:var(--panel);display:grid;place-items:center;border:1px solid var(--line)}
+.mark svg{width:16px;height:16px;color:var(--amber)}
+.brand b{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{display:inline-flex;padding:3px;border-radius:11px;background:var(--panel-2);border:1px solid var(--line-2)}
+.seg a{font-weight:500;font-size:12.5px;padding:6px 11px;border-radius:8px;color:var(--muted-2);text-decoration:none;cursor:pointer;white-space:nowrap;transition:background .2s,color .2s}
+.seg a.on{background:var(--amber);color:var(--bg)}
+.seg a:hover{color:var(--ink)}
+.seg a.on:hover{color:var(--bg)}
+.btn-top{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:7px 11px;font:500 12.5px var(--f-ui);font-family:var(--f-ui);cursor:pointer;white-space:nowrap;transition:background .2s,border-color .2s}
+.btn-top:hover{background:#34658d;border-color:var(--amber)}
+.btn-top:active{background:#244a69}
+#srcActions{display:inline-flex;align-items:center;gap:8px}
+#rmsg{font-size:12px;color:var(--muted-2)}
+
+/* ---------- the deck ---------- */
+.deck{display:grid;grid-template-columns:minmax(0,432px) minmax(0,1fr);gap:14px;height:calc(100% - 62px);padding:0 14px 14px}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:thin;animation:up .6s cubic-bezier(.2,.7,.2,1) both}
+/* cards keep their content height inside the scrolling column: a clipped card would otherwise shrink to nothing */
+.col>*{flex:0 0 auto}
+.col>*:nth-child(1){animation:up .6s .05s both}
+.col>*:nth-child(2){animation:up .6s .15s both}
+.col>*:nth-child(3){animation:up .6s .25s both}
+.col>*:nth-child(4){animation:up .6s .35s both}
+.mapcol{display:flex;flex-direction:column;gap:0;min-width:0;min-height:0;animation:inr .7s cubic-bezier(.2,.7,.2,1) both}
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes inr{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(229,96,74,.55)}50%{box-shadow:0 0 0 7px rgba(229,96,74,0)}}
+
+/* ---------- cards ---------- */
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 14px 30px rgba(8,22,36,.35)}
+h3{margin:0 0 12px;font-weight:600;font-size:16px}
+.card p{margin:6px 0;color:var(--ink-2);font-size:13px}
+.card p b,.card li b{color:var(--ink)}
+.note,label.n{font-size:12px;color:var(--muted)}
+label.n{color:var(--muted-2)}
+.card .note,.card .why{font-size:12px;color:var(--muted);margin:8px 0 0}
+.card a,.drawer a{color:var(--amber);font-weight:600;font-size:13px;text-decoration:none;cursor:pointer}
+.card a:hover,.drawer a:hover{text-decoration:underline}
+
+/* the decision, over a picture of the morning it is about */
+.card.hero{padding:0;overflow:hidden;border-color:var(--line)}
+.hero .pic{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero .scr{position:absolute;inset:0;background:linear-gradient(180deg,rgba(30,58,82,.25),rgba(30,58,82,.92))}
+.hero .body,.hero .in{position:relative;display:flex;flex-direction:column;padding:92px 20px 20px}
+.chip{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:12px;color:var(--state);transition:color .6s}
+.led{width:8px;height:8px;border-radius:50%;background:var(--state);box-shadow:0 0 10px var(--state);transition:background .6s}
+:root[data-state="deploy"] .led,:root[data-state="prepare"] .led{animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35}}
+.verb{margin:10px 0 8px;font-weight:600;font-size:40px;line-height:1.05;letter-spacing:-.01em}
+.when{font-size:15px;color:var(--muted-2)}
+.when b{font-size:20px;font-weight:600;color:var(--state);font-variant-numeric:tabular-nums;transition:color .6s}
+.what{margin:14px 0 16px;font-size:26px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.what span{color:var(--amber);margin:0 8px}
+.cta{width:100%;padding:14px;border:0;border-radius:12px;background:var(--state);color:var(--bg);font:700 15px var(--f-ui);font-family:var(--f-ui);cursor:pointer;box-shadow:0 8px 22px rgba(255,206,92,.28);transition:background .6s,box-shadow .6s,filter .2s}
+.cta:hover{filter:brightness(1.07)}
+.cta:active{filter:brightness(.94)}
+.cta.ghost{background:transparent;color:var(--muted-2);border:1px solid var(--line);box-shadow:none}
+.why{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.more{display:flex;margin-top:12px}
+.more button{background:none;border:0;padding:0;color:var(--amber);font-weight:600;font-size:13px;font-family:var(--f-ui);cursor:pointer}
+.more button:hover{text-decoration:underline}
+.cardnote{display:block;font-size:12px;color:var(--muted);margin-top:8px}
+.cardnote:empty{display:none}
+.card .body>*{transition:opacity .35s,transform .35s}
+.card .body>.cta{order:1}
+.card .body>.cardnote{order:2}
+.card .body>.why{order:3}
+.card .body>.more{order:4}
+.card.thinking .body>*{opacity:0;transform:translateY(6px)}
+.thinkline{position:relative;display:none;margin:14px 0 0;height:2px;border-radius:2px;overflow:hidden;background:var(--line)}
+.card.thinking .thinkline{display:block}
+.thinkline::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--ice),transparent);animation:sweep 1s linear infinite}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.reveal .verb,.reveal .when,.reveal .what,.reveal .cta,.reveal .why{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+.reveal .when{animation-delay:.05s}.reveal .what{animation-delay:.1s}.reveal .cta{animation-delay:.16s}.reveal .why{animation-delay:.22s}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+
+/* ---------- lists, facts, figures, tables ---------- */
+.list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:9px}
+.list li{font-size:13px;color:var(--ink-2);padding-left:20px;position:relative}
+.list li::before{content:"";position:absolute;left:2px;top:7px;width:8px;height:8px;border-radius:50%;background:var(--amber)}
+.facts{display:grid;margin-top:2px}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.fact:last-child{border-bottom:0}
+.fact b{font-size:19px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+.fact[data-hot="1"] b{color:var(--amber)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+.kv div{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px;min-height:112px}
+.kv .v{font-size:30px;font-weight:600;color:var(--amber);font-variant-numeric:tabular-nums;line-height:1.1}
+.kv .l{font-size:12px;color:var(--muted-2);margin-top:6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.row:empty{display:none}
+select.s{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font:500 12.5px var(--f-ui);font-family:var(--f-ui);max-width:100%;cursor:pointer}
+.tw{overflow:hidden}
+#plantbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th,td{text-align:left;padding:7px 5px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:11px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#plantbl tbody tr{cursor:pointer}
+#plantbl tbody tr:hover{background:rgba(61,106,145,.22)}
+.sw2{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+#tl{display:block;width:100%;height:156px;overflow:visible}
+#chart{width:100%;height:140px;display:block}
+#chart text{fill:var(--muted);font-size:10px;font-family:var(--f-ui)}
+
+/* ---------- where - the picture strip sits under the title ---------- */
+.card.where{padding:0;overflow:hidden}
+.where .pic{position:absolute;left:0;top:0;width:100%;height:112px;object-fit:cover}
+.where .scr{position:absolute;left:0;top:0;width:100%;height:112px;background:linear-gradient(180deg,rgba(30,58,82,.35),#2B5578)}
+.where .in{position:relative;padding:20px}
+.where .top{height:72px;display:flex;align-items:flex-end}
+.where .top h3{margin:0}
+
+/* ---------- the map panel ---------- */
+.frame{position:relative;flex:1 1 auto;min-height:340px;border-radius:18px 18px 0 0;overflow:hidden;border:1px solid var(--line);border-bottom:0;background:var(--panel-2)}
+#map{position:absolute;inset:0;z-index:0;background:var(--bm-land)}
+#mapSnow{position:absolute;inset:0;z-index:400;pointer-events:none;width:100%;height:100%}
+.vignette{position:absolute;inset:0;z-index:401;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(14,30,46,.55))}
+.clock{position:absolute;z-index:500;top:12px;right:12px;display:flex;align-items:center;gap:8px;background:var(--red);color:#fff;padding:7px 13px;border-radius:999px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums;animation:breathe 2.4s ease-in-out infinite}
+.clock i{width:8px;height:8px;border-radius:50%;background:#fff}
+
+.leaflet-container{background:var(--bm-land);font-family:var(--f-ui)}
+.leaflet-control-zoom{margin-right:14px!important;margin-bottom:14px!important;border:0!important}
+.leaflet-control-zoom a{background:var(--panel-3)!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.leaflet-control-zoom a:first-child{border-radius:9px 9px 0 0}
+.leaflet-control-zoom a:last-child{border-radius:0 0 9px 9px}
+.leaflet-control-attribution{background:transparent!important;color:var(--muted-2)!important;font-size:9.5px!important}
+.leaflet-control-attribution a{color:var(--ink-2)!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip,.leaflet-tooltip{background:var(--panel-3);color:var(--ink);border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.leaflet-popup-content{font-size:12px;line-height:1.45;margin:11px 13px}
+.leaflet-popup-content table{margin-top:4px;font-size:11.5px}
+.leaflet-popup-content td{padding:1px 4px;border-bottom:0}
+.leaflet-tooltip.hl{background:transparent;border:0;box-shadow:none;color:var(--ink);font:600 10px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:0;text-shadow:0 1px 3px #000}
+.leaflet-tooltip.hl::before{display:none}
+.halo{animation:halo 2.4s ease-in-out infinite}
+@keyframes halo{50%{opacity:.25}}
+path.route{stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(63,220,149,.85))}
+
+/* time ruler + legend close the map panel */
+.ruler{display:flex;flex:none;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-top:1px solid var(--line);padding:10px 14px}
+.play{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--amber);background:transparent;color:var(--amber);cursor:pointer;font-size:11px;display:grid;place-items:center;transition:background .2s}
+.play:hover{background:rgba(255,206,92,.15)}
+.play:active{background:rgba(255,206,92,.3)}
+.ruler input{flex:1;min-width:0;accent-color:var(--amber);cursor:pointer}
+.ruler b{flex:none;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums}
+.legend{display:grid;flex:none;grid-template-columns:1fr 1fr;gap:6px 14px;background:var(--panel-3);border:1px solid var(--line);border-top:0;border-radius:0 0 18px 18px;padding:12px 14px;font-size:11.5px;color:var(--ink-2)}
+.legend span{display:flex;align-items:center;gap:8px}
+.legend i{width:16px;height:4px;border-radius:2px;flex:none}
+
+/* ---------- details drawer: source, refresh, the way out ---------- */
+.drawer{position:fixed;z-index:700;top:0;right:0;bottom:0;width:min(440px,100%);overflow-y:auto;padding:18px 20px 28px;background:var(--panel);border:1px solid var(--line);border-radius:20px 0 0 20px;box-shadow:-24px 0 60px rgba(8,22,36,.5);transform:translateX(105%);transition:transform .45s cubic-bezier(.2,.7,.2,1)}
+.drawer.open{transform:none}
+.dhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.dhead h2{margin:0;font-weight:600;font-size:15px}
+.x{width:32px;height:32px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;transition:background .2s}
+.x:hover{background:var(--panel-3)}
+.sec{padding:16px 0;border-top:1px solid var(--line)}
+.sec:first-of-type{border-top:0}
+.sec h3{margin:0 0 10px;font-weight:600;font-size:13px;color:var(--muted-2)}
+.sec p{margin:6px 0;font-size:13px;color:var(--ink-2)}
+.sec p b{color:var(--ink)}
+#source+.sec{margin-top:4px}
+.btn-s{background:transparent;border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:12.5px;font-family:var(--f-ui);cursor:pointer;color:var(--ink-2);transition:background .2s,border-color .2s}
+.btn-s:hover{border-color:var(--amber);color:var(--ink)}
+.drill{margin-top:8px;padding:8px 12px;border-radius:10px;font-size:12.5px;border:1px solid var(--amber);background:rgba(255,206,92,.10)}
+
+/* ---------- narrow: one column, map first, the deck scrolls ---------- */
+@media (max-width:900px){
+  html,body{overflow:auto}
+  .deck{grid-template-columns:minmax(0,1fr);height:auto;padding:0 12px 12px}
+  .col{overflow:visible;padding-right:0}
+  .mapcol{order:-1}
+  .frame{flex:none;height:min(58vh,440px);border-radius:18px;border-bottom:1px solid var(--line)}
+  .legend{margin-bottom:14px}
+  .verb{font-size:32px}
+  .what{font-size:22px}
+  .kv .v{font-size:26px}
+  .leaflet-control-zoom{display:none}
+  .drawer{width:100%;border-radius:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
