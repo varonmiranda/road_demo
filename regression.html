@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cold Road Regressions</title>
+<script src="data/regression.js"></script>
+<script>
+  const STATIC = !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);   // shared link: no demo server
+  document.write('<script src="data/live.js' + (STATIC ? "" : "?v=" + Date.now()) + '"><\/script>');
+</script>
+<style>
+:root{
+  color-scheme: light;
+  --surface:#fcfcfb; --panel:#ffffff; --ink:#0b0b0b; --ink-2:#52514e; --muted:#7a7974; --line:#e6e5e1; --grid:#efeeea;
+  --s1:#2a78d6; --s2:#eb6834;               /* categorical slots 1-2 (validated) */
+  --cool:#2a78d6; --warm:#e34948; --mid:#c9c8c3; --mid-bg:#f0efec;  /* diverging blue<->red, gray midpoint */
+  --good:#0ca30c; --serious:#ec835a; --critical:#d03b3b;
+  --pt:#2a78d6; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --warning:#fab219;
+}
+@media (prefers-color-scheme: dark){ :root:where(:not([data-theme="light"])){
+  color-scheme: dark;
+  --surface:#1a1a19; --panel:#222220; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#9a998f; --line:#383835; --grid:#2c2c2a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --cool:#3987e5; --warm:#e66767; --mid:#5c5b56; --mid-bg:#383835; --pt:#3987e5;
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface:#1a1a19; --panel:#222220; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#9a998f; --line:#383835; --grid:#2c2c2a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --cool:#3987e5; --warm:#e66767; --mid:#5c5b56; --mid-bg:#383835; --pt:#3987e5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.015em}
+.lede{color:var(--ink-2);margin:0 0 20px;max-width:760px}
+h2{font-size:19px;margin:40px 0 4px;letter-spacing:-.01em}
+.sub{color:var(--ink-2);margin:0 0 14px;max-width:780px;font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:8px 0 6px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile .v{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile .l{font-size:13px;color:var(--ink-2)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;border:0;border-right:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 11px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--ink);color:var(--surface)}
+select{font:inherit;font-size:13px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{fill:var(--ink-2);font-size:11px}
+svg .lab{fill:var(--ink);font-size:12px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-top:8px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.stats{font-size:13px;color:var(--ink-2);margin-top:6px}
+.stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--ink-2);font-weight:600}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.badge{display:inline-flex;gap:5px;align-items:center;font-size:12px;white-space:nowrap}
+.note{font-size:13px;color:var(--ink-2)}
+.callout{border-left:3px solid var(--s1);background:var(--panel);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+.warn{border-left-color:var(--serious)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+details{margin-top:10px} summary{cursor:pointer;color:var(--ink-2);font-size:13px}
+#tip{position:fixed;pointer-events:none;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.12);opacity:0;transition:opacity .08s;z-index:10;max-width:280px}
+.parts{display:flex;gap:8px;margin:14px 0 4px;position:sticky;top:0;background:var(--surface);padding:8px 0;z-index:5;border-bottom:1px solid var(--line)}
+.parts a{font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--panel)}
+h2.part{font-size:22px;margin-top:34px;padding-top:6px;border-top:2px solid var(--ink)}
+.btn{font:inherit;font-size:13px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer}
+.multi{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.panel{border:1px solid var(--line);border-radius:10px;padding:6px}
+svg .slope{font-size:11px;font-weight:600}
+.simgrid{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:14px}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0}
+legend{font-size:12px;color:var(--ink-2);padding:0 4px}
+.ctl{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-2);margin:6px 0}
+.ctl b{color:var(--ink);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{width:100%}
+.ctl:has(input[type=checkbox]){flex-direction:row;justify-content:space-between;align-items:center}
+.simT{font-size:44px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.chip{display:inline-flex;gap:6px;align-items:center;border:1.5px solid;border-radius:999px;padding:3px 10px;margin:8px 0 4px;font-size:13px}
+.rec{font-size:13px;margin-bottom:6px}
+@media (max-width:900px){ .simgrid{grid-template-columns:1fr} }
+@media (max-width:760px){ .grid2{grid-template-columns:1fr} h1{font-size:22px} }
+</style>
+</head>
+<body>
+<main>
+  <p style="margin:0 0 10px;font-size:13px"><a href="index.html" style="color:var(--s1)">← Storm replay demo</a></p>
+  <h1>Which DC roads run cold, and why? Live prediction and satellite evidence</h1>
+  <p class="lede" id="lede"></p>
+  <div class="tiles" id="tiles"></div>
+
+  <nav class="parts"><a href="#live">Part 1 · Live prediction</a><a href="#evidence">Part 2 · Satellite evidence</a></nav>
+
+  <section id="live">
+  <h2 class="part">Part 1 · Live: how the factors combine to predict road temperature</h2>
+  <div id="liveStatus"></div>
+
+  <h2>L1 · Every road, one hour: temperature vs each factor</h2>
+  <p class="sub">Each dot is one of the 1,755 hospital access roads, showing its predicted pavement temperature at the selected hour of the live forecast. Press play and watch bridges (orange) drop below other roads at night, with no ground under them to hold heat, and the building-height slope flip between day (shade) and night (stored heat). <b>Careful:</b> each panel shows one factor alone, and factors travel together. Tree-lined roads also tend to be higher and less paved, so a single panel can mislead. L2 separates them.</p>
+  <div class="card">
+    <div class="row"><button id="lPlay" class="btn">▶ Play 48 h</button><input type="range" id="lHour" min="0" style="flex:1;min-width:180px"><b id="lHourLab" style="min-width:180px;font-variant-numeric:tabular-nums"></b></div>
+    <div id="lWx" class="stats" style="margin:0 0 8px"></div>
+    <div id="multiples" class="multi"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--s1);opacity:.6"></span>road (at grade)</span><span><span class="sw" style="background:var(--s2)"></span>bridge</span><span><span class="sw" style="background:var(--ink)"></span>straight-line fit, all roads</span><span><span class="sw" style="background:var(--warm);border-radius:2px;height:2px;vertical-align:3px"></span>32°F freezing line</span></div>
+  </div>
+
+  <h2>L2 · How strongly each factor matters, hour by hour</h2>
+  <p class="sub">A multiple regression of the predicted road temperatures on five factors, refitted for every forecast hour. The y-axis is °F change per 1 standard deviation of the factor. Shaded bands are night. <b>This chart describes how our engine combines the variables</b>, not independent proof. The proof that these relationships are real is in Part 2.</p>
+  <div class="card"><div id="effects"></div><div class="legend" id="effLegend"></div></div>
+
+  <div class="grid2">
+    <div>
+      <h2>L3 · Weather → road</h2>
+      <p class="sub">Each dot is one forecast hour. Above the dashed line, the road is warmer than the air (sun, ground heat). Below it, the road is colder (clear-night radiation, bridges).</p>
+      <div class="card"><div id="airRoad"></div>
+        <div class="legend"><span><span class="sw" style="background:var(--s1)"></span>typical road (median)</span><span><span class="sw" style="background:var(--s2)"></span>coldest bridge</span><span>● day · ○ night</span></div></div>
+    </div>
+    <div>
+      <h2>L4 · All roads at the selected hour</h2>
+      <p class="sub">The distribution of predicted temperatures across every hospital access road. Everything left of 32°F is where ice can form.</p>
+      <div class="card"><div id="hist"></div><div class="stats" id="histStats"></div></div>
+    </div>
+  </div>
+
+  <h2>L5 · Each hospital, hour by hour</h2>
+  <p class="sub">The typical predicted road temperature around each ER, hour by hour. <b>vs 32°F</b> shows where ice is possible. <b>vs citywide</b> shows which hospitals run colder or warmer than the typical corridor road at the same hour, which is useful when everything is above freezing. Hover for values.</p>
+  <div class="card"><div class="row"><div class="seg" id="hmMode"><button data-m="abs" class="on">vs 32°F</button><button data-m="rel">vs citywide typical road</button></div></div><div id="hospHeat"></div>
+    <div class="legend" id="hmLeg"></div></div>
+
+  <h2>L6 · Why is this road this temperature? (one road, one hour)</h2>
+  <p class="sub">Start from the forecast air temperature and add each factor's contribution. The total is the temperature the road is heading toward. The road gets there gradually, which is the "thermal lag" in the note.</p>
+  <div class="card">
+    <div class="row"><select id="roadPick" style="max-width:100%"></select></div>
+    <div id="waterfall"></div><div class="stats" id="wfNote"></div>
+  </div>
+
+  <h2>L7 · What-if simulator (instant)</h2>
+  <p class="sub">Move any slider and the same engine recalculates immediately. Load a real road and the current forecast hour, then change one thing, such as making it a bridge, adding trees or dropping the air temperature 10°F, to see how the factors interact. The recommendation follows the Minnesota salt bands from your research.</p>
+  <div class="card sim">
+    <div class="row"><select id="simLoad"></select><button class="btn" id="simReset">Load</button></div>
+    <div class="simgrid">
+      <fieldset><legend>Weather</legend><div id="simWx"></div></fieldset>
+      <fieldset><legend>Road</legend><div id="simRoad"></div></fieldset>
+      <div class="simout"><div id="simHero"></div><div id="simWf"></div></div>
+    </div>
+  </div>
+  </section>
+
+  <section id="evidence">
+  <h2 class="part">Part 2 · Satellite evidence: are these relationships real?</h2>
+  <p class="sub">Historical, not live. Satellites only measure on clear passes (Landsat every 8–16 days, MODIS nightly at 1 km), so they can't run in real time. Part 2 checks the relationships Part 1 relies on against satellite measurements of 4,000 random DC roads.</p>
+
+  <h2>1 · What predicts a cold road surface</h2>
+  <p class="sub">Multiple regression of each satellite measurement on nine physical factors at once, so each bar shows that factor's effect <i>holding the others fixed</i>. Effects are per 1 standard deviation of the factor. Error bars are 95% confidence intervals with errors clustered by 1 km grid cell. Gray means the interval crosses zero: no reliable effect.</p>
+  <div class="card">
+    <div class="row"><div class="seg" id="tgtTabs"></div></div>
+    <div id="forest"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--cool)"></span>associated with a colder surface</span><span><span class="sw" style="background:var(--warm)"></span>associated with a warmer surface</span><span><span class="sw" style="background:var(--mid)"></span>not significant (p ≥ 0.05)</span></div>
+    <div class="stats" id="forestStats"></div>
+  </div>
+
+  <h2>2 · Day and night tell different stories, and the engine expected that</h2>
+  <p class="sub">Trees and buildings shade a road by day but trap heat at night. Here is each assumption in our pavement-temperature engine (<code>thermal.py</code>) checked against the direction the satellites measured.</p>
+  <div class="card"><table id="checks"></table></div>
+
+  <h2>3 · Explore one relationship</h2>
+  <p class="sub">Every dot is one of the sampled DC road segments. The orange line shows average values within each tenth of the factor's range (bars = ±1 standard error), which reveals the shape without assuming a straight line.</p>
+  <div class="card">
+    <div class="row"><select id="exT"></select><span class="note">vs</span><select id="exP"></select></div>
+    <div id="scatter"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--s1);opacity:.5"></span>road segment</span><span><span class="sw" style="background:var(--s2)"></span>decile average</span><span><span class="sw" style="background:var(--ink)"></span>straight-line (OLS) fit</span></div>
+    <div class="stats" id="scStats"></div>
+  </div>
+
+  <h2>4 · How the factors move together</h2>
+  <p class="sub">Spearman rank correlations. Watch for factors that travel together, like tree canopy vs impervious surface: the regression separates their effects, but the more two factors overlap, the wider the error bars.</p>
+  <div class="card"><div id="heat"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--cool)"></span>negative</span><span><span class="sw" style="background:var(--mid-bg);outline:1px solid var(--line)"></span>none</span><span><span class="sw" style="background:var(--warm)"></span>positive</span></div>
+  </div>
+
+  <h2>5 · How well can these factors predict? (the honest test)</h2>
+  <p class="sub">R² = share of road-to-road variation explained, measured on roads the model never saw. <b>Random</b> holds out random roads, whose neighbors were still used for fitting. <b>Spatial</b> holds out whole 2 km neighborhoods, which is how the model would face a new part of the city. A big gap means the model memorized places rather than learning physics.</p>
+  <div class="card"><div id="skill"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--s1)"></span>random cross-validation</span><span><span class="sw" style="background:var(--s2)"></span>spatial cross-validation (2 km blocks)</span></div>
+  </div>
+
+  <h2>6 · A "cold road" classifier</h2>
+  <p class="sub" id="logitSub"></p>
+  <div class="grid2">
+    <div class="card"><b style="font-size:14px">Odds of being a cold road, per 1 SD of each factor</b><div id="odds"></div>
+      <div class="legend"><span><span class="sw" style="background:var(--cool)"></span>raises odds of cold</span><span><span class="sw" style="background:var(--warm)"></span>lowers odds</span><span><span class="sw" style="background:var(--mid)"></span>not significant</span></div></div>
+    <div class="card"><b style="font-size:14px">Calibration on held-out neighborhoods</b><div id="calib"></div>
+      <p class="note">Each dot is one tenth of roads, grouped by predicted probability. Dots on the diagonal mean "70% predicted" really is cold about 70% of the time.</p></div>
+  </div>
+
+  <h2>7 · Applied to the hospital access corridors</h2>
+  <p class="sub" id="hospSub"></p>
+  <div class="grid2">
+    <div class="card"><b style="font-size:14px">Average probability a corridor road is "cold"</b><div id="hospBars"></div></div>
+    <div class="card"><b style="font-size:14px">Most cold-prone hospital access roads</b><table id="topRoads"></table></div>
+  </div>
+
+  <h2>Method &amp; limits</h2>
+  <div class="card note" id="method"></div>
+  </section>
+</main>
+<div id="tip"></div>
+<script>
+const R = window.REG;
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const PRED = R.predictors, TGT = R.targets, PK = PRED.map(p=>p.key);
+const lab = k => (PRED.find(p=>p.key===k) || TGT.find(t=>t.key===k)).label;
+// sign convention: for temperature targets a NEGATIVE effect = colder; for snow a POSITIVE effect = colder
+const coldSign = t => t === "snow_persist" ? 1 : -1;
+const fmtP = p => p < 0.001 ? "p < 0.001" : `p = ${p.toFixed(3)}`;
+const tip = $("#tip");
+function showTip(e, html){ tip.innerHTML = html; tip.style.opacity = 1;
+  const x = Math.min(e.clientX + 14, innerWidth - 290), y = e.clientY + 14; tip.style.left = x+"px"; tip.style.top = y+"px"; }
+function hideTip(){ tip.style.opacity = 0; }
+function bindTips(root){ root.querySelectorAll("[data-tip]").forEach(el=>{
+  el.addEventListener("mousemove", e=>showTip(e, el.dataset.tip)); el.addEventListener("mouseleave", hideTip); }); }
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+
+// ---------- header
+const M = R.models;
+$("#lede").innerHTML = `<b>Part 1 (live):</b> today's National Weather Service forecast plus each road's Google Earth Engine profile (trees, buildings, pavement, elevation, terrain, bridges) gives a predicted temperature for all 1,755 hospital access roads, hour by hour, with a what-if simulator. <b>Part 2 (historical evidence):</b> regressions on ${R.n_sample.toLocaleString()} random DC roads test whether those relationships hold up in satellite measurements. The tiles below summarize Part 2.`;
+$("#tiles").innerHTML = [
+  [`${R.logistic.auc_spatial_cv.toFixed(2)}`, `AUC for spotting the coldest 25% of roads, tested on unseen neighborhoods (0.5 = coin flip)`],
+  (()=>{ const v=Object.values(M).flatMap(m=>[m.perf.ols_spatial_cv,m.perf.gbm_spatial_cv]);
+     return [`${Math.round(Math.min(...v)*100)}–${Math.round(Math.max(...v)*100)}%`, `of road-to-road variation explained in unseen neighborhoods, across all 6 models`]; })(),
+  [`${R.checksSupported ?? "—"}`, `engine assumptions backed by satellite data (see section 2)`],
+  [`+${R.engine_agreement.rho.toFixed(2)}`, `rank agreement between our physics engine and this data-driven model on ${R.engine_agreement.n.toLocaleString()} hospital roads`],
+].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+
+// ---------- 1. forest plot
+let curT = "lst_day_anom_f";
+function forest(){
+  const m = M[curT], t = TGT.find(x=>x.key===curT), sgn = coldSign(curT);
+  const rows = [...m.coefs].sort((a,b)=> sgn*(b.beta) - sgn*(a.beta));   // coldest-associated first
+  const W = 760, rowH = 30, padL = 210, padR = 40, H = rows.length*rowH + 40;
+  const ext = Math.max(...rows.map(r=>Math.max(Math.abs(r.lo), Math.abs(r.hi)))) * 1.1;
+  const x = v => padL + (W-padL-padR) * (v + ext) / (2*ext);
+  let g = `<line x1="${x(0)}" x2="${x(0)}" y1="6" y2="${H-26}" stroke="${css("--line")}" stroke-width="1"/>`;
+  for (const v of [-ext*0.9, -ext*0.45, ext*0.45, ext*0.9]) g += `<text x="${x(v)}" y="${H-8}" text-anchor="middle">${v>0?"+":""}${v.toFixed(Math.abs(v)<1?2:1)}</text>`;
+  g += `<text x="${x(0)}" y="${H-8}" text-anchor="middle">0</text>`;
+  rows.forEach((r,i)=>{
+    const y = 20 + i*rowH, sig = r.p < 0.05, cold = sig && Math.sign(r.beta) === sgn;
+    const col = !sig ? css("--mid") : cold ? css("--cool") : css("--warm");
+    const tipHtml = `<b>${esc(r.label)}</b><br>${r.beta>0?"+":""}${r.beta.toFixed(3)} ${esc(t.unit)} per 1 SD<br>95% CI ${r.lo.toFixed(3)} to ${r.hi.toFixed(3)}<br>${fmtP(r.p)} · ${sig ? (cold?"colder":"warmer") : "not significant"}`;
+    g += `<g data-tip="${esc(tipHtml)}"><rect x="0" y="${y-rowH/2}" width="${W}" height="${rowH}" fill="transparent"/>
+      <text class="lab" x="${padL-12}" y="${y+4}" text-anchor="end">${esc(r.label)}</text>
+      <line x1="${x(r.lo)}" x2="${x(r.hi)}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="${x(r.beta)}" cy="${y}" r="5" fill="${col}" stroke="${css("--panel")}" stroke-width="2"/></g>`;
+  });
+  g += `<text x="${padL}" y="${H-8}" text-anchor="start" style="font-size:10px">${sgn<0?"← colder":"← less snow (warmer)"}</text><text x="${W-padR}" y="${H-8}" text-anchor="end" style="font-size:10px">${sgn<0?"warmer →":"more snow (colder) →"}</text>`;
+  $("#forest").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Regression coefficients for ${esc(t.label)}">${g}</svg>`;
+  bindTips($("#forest"));
+  $("#forestStats").innerHTML = `Target: <b>${esc(t.label)}</b> (${esc(t.unit)}, ${esc(t.res)}) · n = <b>${m.n.toLocaleString()}</b> · in-sample R² <b>${m.perf.ols_in_sample}</b> · spatial-CV R² <b>${m.perf.ols_spatial_cv}</b>` +
+    (curT==="snow_persist" ? `<div class="callout warn">Caution: satellites can't see snow under tree crowns, and dense streets get plowed first. Part of the "trees → less snow" and "pavement → less snow" effect is how the measurement and plowing work, not road temperature.</div>` : "") +
+    (curT==="lst_night_anom_f" ? `<div class="callout warn">Caution: MODIS night pixels are 1 km wide, so each value blends a road with its whole neighborhood, including rivers that stay warm at night. Read these as neighborhood effects.</div>` : "");
+}
+$("#tgtTabs").innerHTML = TGT.map(t=>`<button data-t="${t.key}" class="${t.key===curT?"on":""}">${esc(t.label)}</button>`).join("");
+$("#tgtTabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{ curT=b.dataset.t; $("#tgtTabs").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); forest(); });
+
+// ---------- 2. engine assumptions vs data
+const ASSUME = [
+  ["elev_m","Higher roads are colder (lapse rate)", -1, -1],
+  ["canopy_pct","Trees shade by day (colder) and trap heat at night (warmer)", -1, +1],
+  ["built_h_m","Buildings shade by day (colder) and trap heat at night (warmer)", -1, +1],
+  ["impervious_pct","Dense pavement stores heat: urban heat island (warmer)", +1, +1],
+  ["terrain_shade","Roads in a hill's winter shadow get less sun (colder by day)", -1, null],
+  ["northness","North-facing slopes get less sun (colder by day)", -1, null],
+  ["bridge","Bridge decks lose heat from below (colder)", -1, -1],
+];
+let supported = 0, tested = 0;
+function verdict(tkey, k, exp){
+  if (exp === null) return `<span class="note">not assumed</span>`;
+  const c = M[tkey].coefs.find(x=>x.key===k);
+  const desc = `${c.beta>0?"+":""}${c.beta.toFixed(2)}°F/SD, ${fmtP(c.p)}`;
+  if (c.p >= 0.05) return `<span class="badge" title="${desc}">○ not significant</span><div class="note">${desc}</div>`;
+  tested++;
+  const ok = Math.sign(c.beta) === exp; if (ok) supported++;
+  return `<span class="badge" style="color:${ok?css("--good"):css("--critical")}">${ok?"✓ supported":"✗ contradicted"}</span><div class="note">${desc}</div>`;
+}
+$("#checks").innerHTML = `<thead><tr><th>Engine assumption</th><th>Daytime evidence<br><span class="note">Landsat, 30 m</span></th><th>Night evidence<br><span class="note">MODIS, 1 km</span></th></tr></thead><tbody>` +
+  ASSUME.map(([k,txt,d,n])=>`<tr><td><b>${esc(lab(k))}</b><div class="note">${esc(txt)}</div></td><td>${verdict("lst_day_anom_f",k,d)}</td><td>${verdict("lst_night_anom_f",k,n)}</td></tr>`).join("") + `</tbody>`;
+R.checksSupported = `${supported} of ${tested}`;
+$("#tiles").children[2].querySelector(".v").textContent = R.checksSupported;
+const contradictions = tested - supported;
+if (contradictions) $("#checks").insertAdjacentHTML("afterend", `<p class="note" style="margin-top:8px">Contradictions are kept, not hidden. The bridge result at night most likely comes from 1 km MODIS pixels over the Potomac and Anacostia, where open water stays warmer than land at night. Landsat at 30 m, which can resolve the deck itself, shows bridges colder as expected.</p>`);
+
+// ---------- 3. scatter explorer
+const exT = $("#exT"), exP = $("#exP");
+TGT.forEach(t=>exT.add(new Option(t.label, t.key)));
+PRED.forEach(p=>exP.add(new Option(p.label, p.key)));
+exT.value = "lst_day_anom_f"; exP.value = "canopy_pct";
+function scatter(){
+  const tk = exT.value, pk = exP.value, t = TGT.find(x=>x.key===tk), p = PRED.find(x=>x.key===pk);
+  const b = M[tk].bivariate[pk];
+  const pts = R.points.filter(q=>q[tk]!=null);
+  const W=760, H=360, pl=52, pr=16, pt=12, pb=40;
+  const xs = pts.map(q=>q[pk]), ys = pts.map(q=>q[tk]);
+  const q = (arr,f)=>{ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(f*(s.length-1))]; };
+  let x0=Math.min(...xs), x1=Math.max(...xs); const y0=q(ys,0.005), y1=q(ys,0.995);
+  if (pk==="bridge"){ x0=-0.3; x1=1.3; }
+  const X=v=>pl+(W-pl-pr)*(v-x0)/(x1-x0||1), Y=v=>pt+(H-pt-pb)*(1-(Math.max(y0,Math.min(y1,v))-y0)/(y1-y0||1));
+  let g="";
+  for (let i=0;i<=4;i++){ const v=y0+(y1-y0)*i/4; g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${pl-6}" y="${Y(v)+3}" text-anchor="end">${v.toFixed(tk==="snow_persist"?2:1)}</text>`; }
+  for (let i=0;i<=4;i++){ const v=x0+(x1-x0)*i/4; if(pk!=="bridge") g+=`<text x="${X(v)}" y="${H-pb+16}" text-anchor="middle">${v.toFixed(Math.abs(x1-x0)<5?2:0)}</text>`; }
+  if (pk==="bridge") g+=`<text x="${X(0)}" y="${H-pb+16}" text-anchor="middle">not a bridge</text><text x="${X(1)}" y="${H-pb+16}" text-anchor="middle">bridge</text>`;
+  g+=`<text x="${(pl+W-pr)/2}" y="${H-4}" text-anchor="middle">${esc(p.label)} (${esc(p.unit)})</text>`;
+  g+=`<text transform="translate(12 ${(pt+H-pb)/2}) rotate(-90)" text-anchor="middle">${esc(t.label)}</text>`;
+  const jit = i => pk==="bridge" ? ((i*7919)%100/100-0.5)*0.4 : 0;
+  pts.forEach((d,i)=>{ g+=`<circle cx="${X(d[pk]+jit(i))}" cy="${Y(d[tk])}" r="2.2" fill="${css("--pt")}" fill-opacity="0.22"/>`; });
+  g+=`<line x1="${X(x0)}" x2="${X(x1)}" y1="${Y(b.icept+b.slope*x0)}" y2="${Y(b.icept+b.slope*x1)}" stroke="${css("--ink")}" stroke-width="2"/>`;
+  g+=`<polyline fill="none" stroke="${css("--s2")}" stroke-width="2" points="${b.bins.map(d=>`${X(d.x)},${Y(d.y)}`).join(" ")}"/>`;
+  b.bins.forEach(d=>{ const se=d.se||0;
+    g+=`<g data-tip="${esc(`<b>${p.label} ≈ ${d.x.toFixed(2)} ${p.unit}</b><br>average ${t.label.toLowerCase()}: ${d.y.toFixed(3)}<br>${d.n} roads`)}">
+      <line x1="${X(d.x)}" x2="${X(d.x)}" y1="${Y(d.y-se)}" y2="${Y(d.y+se)}" stroke="${css("--s2")}" stroke-width="2"/>
+      <circle cx="${X(d.x)}" cy="${Y(d.y)}" r="5" fill="${css("--s2")}" stroke="${css("--panel")}" stroke-width="2"/><circle cx="${X(d.x)}" cy="${Y(d.y)}" r="12" fill="transparent"/></g>`; });
+  $("#scatter").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t.label)} versus ${esc(p.label)}">${g}</svg>`;
+  bindTips($("#scatter"));
+  const mc = M[tk].coefs.find(c=>c.key===pk);
+  $("#scStats").innerHTML = `On its own: Pearson r = <b>${b.r}</b>, Spearman ρ = <b>${b.rho}</b>, ${fmtP(b.p)} (clustered). ` +
+    `Holding the other 8 factors fixed: <b>${mc.beta>0?"+":""}${mc.beta.toFixed(3)}</b> per SD, ${fmtP(mc.p)}.` +
+    (Math.sign(b.r)!==Math.sign(mc.beta) && mc.p<0.05 ? ` <span style="color:${css("--serious")}">The sign flips once other factors are controlled for. On its own this factor is standing in for something else (confounding).</span>` : "");
+}
+exT.onchange = exP.onchange = scatter;
+
+// ---------- 4. correlation heatmap
+function heat(){
+  const K = R.corr.keys, C = R.corr.matrix, n = K.length, cell = 44, padL = 190, padT = 150;
+  const W = padL + n*cell + 10, H = padT + n*cell + 10;
+  const mix=(a,b,k)=>{const p=h=>[1,3,5].map(j=>parseInt(h.slice(j,j+2),16));const A=p(a),B=p(b);return "#"+A.map((v,j)=>Math.round(v+(B[j]-v)*k).toString(16).padStart(2,"0")).join("");};
+  let g="";
+  K.forEach((k,i)=>{ g+=`<text class="lab" x="${padL-8}" y="${padT+i*cell+cell/2+4}" text-anchor="end">${esc(lab(k))}</text>`;
+    g+=`<text class="lab" transform="translate(${padL+i*cell+cell/2+4} ${padT-8}) rotate(-50)">${esc(lab(k))}</text>`; });
+  for (let i=0;i<n;i++) for (let j=0;j<n;j++){
+    const v = C[i][j]; const col = v==null||isNaN(v) ? css("--mid-bg") : mix(css("--mid-bg"), v<0?css("--cool"):css("--warm"), Math.min(1,Math.abs(v)/0.6));
+    g+=`<g data-tip="${esc(`<b>${lab(K[i])}</b> × <b>${lab(K[j])}</b><br>Spearman ρ = ${v.toFixed(2)}`)}"><rect x="${padL+j*cell+1}" y="${padT+i*cell+1}" width="${cell-2}" height="${cell-2}" rx="3" fill="${col}"/>`+
+       (i!==j && Math.abs(v)>=0.3 ? `<text x="${padL+j*cell+cell/2}" y="${padT+i*cell+cell/2+4}" text-anchor="middle" style="fill:${css("--ink")};font-size:10px">${v.toFixed(2)}</text>` : "") + `</g>`;
+  }
+  const tStart = PK.length; g+=`<line x1="${padL}" x2="${padL+n*cell}" y1="${padT+tStart*cell}" y2="${padT+tStart*cell}" stroke="${css("--ink-2")}"/><line x1="${padL+tStart*cell}" x2="${padL+tStart*cell}" y1="${padT}" y2="${padT+n*cell}" stroke="${css("--ink-2")}"/>`;
+  $("#heat").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="img" aria-label="Correlation matrix">${g}</svg><p class="note">Values shown where |ρ| ≥ 0.3. The last three rows and columns are the satellite measurements; the lines separate them from the factors.</p>`;
+  bindTips($("#heat"));
+}
+
+// ---------- 5. predictive skill
+function skill(){
+  const rows=[]; TGT.forEach(t=>{ const p=M[t.key].perf;
+    rows.push({lab:`Linear · ${t.label}`, a:p.ols_random_cv, b:p.ols_spatial_cv});
+    rows.push({lab:`Boosted trees · ${t.label}`, a:p.gbm_random_cv, b:p.gbm_spatial_cv}); });
+  const W=760, padL=300, padR=50, bh=11, gap=2, rowH=36, H=rows.length*rowH+24;
+  const X=v=>padL+(W-padL-padR)*Math.max(0,v)/0.8;
+  let g=""; for (const v of [0,0.2,0.4,0.6,0.8]) g+=`<line x1="${X(v)}" x2="${X(v)}" y1="0" y2="${H-20}" stroke="${css("--grid")}"/><text x="${X(v)}" y="${H-6}" text-anchor="middle">${v.toFixed(1)}</text>`;
+  rows.forEach((r,i)=>{ const y=i*rowH+6;
+    g+=`<text class="lab" x="${padL-10}" y="${y+bh+4}" text-anchor="end">${esc(r.lab)}</text>`;
+    [[r.a,"--s1","random CV"],[r.b,"--s2","spatial CV"]].forEach(([v,c,n],k)=>{ const yy=y+k*(bh+gap);
+      g+=`<g data-tip="${esc(`<b>${r.lab}</b><br>${n}: R² = ${v.toFixed(3)}`)}"><rect x="${padL}" y="${yy}" width="${Math.max(2,X(v)-padL)}" height="${bh}" rx="3" fill="${css(c)}"/><rect x="${padL}" y="${yy-2}" width="${W-padL}" height="${bh+4}" fill="transparent"/>
+        <text x="${X(v)+5}" y="${yy+bh-1}" style="font-size:10px">${v.toFixed(2)}</text></g>`; }); });
+  $("#skill").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cross-validated R squared">${g}</svg>
+   <div class="callout">Boosted trees look best on random tests but lose much of that edge on unseen neighborhoods: for Landsat daytime temperature, R² falls from ${M.lst_day_anom_f.perf.gbm_random_cv} to ${M.lst_day_anom_f.perf.gbm_spatial_cv}. So the simple linear model is the more honest daytime predictor. On unseen neighborhoods the factors explain about 12% to 48% of the variation, depending on the measurement. The rest is pavement material, traffic, single buildings or trees, and satellite noise.</div>`;
+  bindTips($("#skill"));
+}
+
+// ---------- 6. logistic
+function logit(){
+  const L=R.logistic;
+  $("#logitSub").innerHTML = `A road counts as <b>cold</b> if its Landsat winter surface temperature is in DC's coldest 25% (at least ${Math.abs(L.cut_f).toFixed(2)}°F below the citywide median). A logistic model on the same nine factors separates cold from not-cold roads with <b>AUC ${L.auc_spatial_cv}</b> when tested on neighborhoods it never saw.`;
+  const rows=[...L.odds].sort((a,b)=>b.or-a.or);
+  const W=380, padL=150, padR=20, rowH=28, H=rows.length*rowH+36;
+  const lo=Math.log(0.4), hi=Math.log(3.2), X=v=>padL+(W-padL-padR)*(Math.log(v)-lo)/(hi-lo);
+  let g=`<line x1="${X(1)}" x2="${X(1)}" y1="4" y2="${H-24}" stroke="${css("--line")}"/>`;
+  for (const v of [0.5,1,2,3]) g+=`<text x="${X(v)}" y="${H-8}" text-anchor="middle">${v}×</text>`;
+  rows.forEach((r,i)=>{ const y=16+i*rowH, sig=r.p<0.05, col=!sig?css("--mid"):r.or>1?css("--cool"):css("--warm");
+    g+=`<g data-tip="${esc(`<b>${r.label}</b><br>odds × ${r.or.toFixed(2)} per 1 SD<br>95% CI ${r.lo.toFixed(2)}–${r.hi.toFixed(2)}<br>${fmtP(r.p)}`)}"><rect x="0" y="${y-rowH/2}" width="${W}" height="${rowH}" fill="transparent"/>
+      <text class="lab" x="${padL-10}" y="${y+4}" text-anchor="end">${esc(r.label)}</text>
+      <line x1="${X(Math.max(0.41,r.lo))}" x2="${X(Math.min(3.1,r.hi))}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="${X(r.or)}" cy="${y}" r="5" fill="${col}" stroke="${css("--panel")}" stroke-width="2"/></g>`; });
+  $("#odds").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Odds ratios">${g}</svg>`; bindTips($("#odds"));
+
+  const C=L.calibration, S=300, p=36, Xc=v=>p+(S-p-10)*v, Yc=v=>S-p-(S-p-10)*v;
+  let h=`<line x1="${Xc(0)}" y1="${Yc(0)}" x2="${Xc(1)}" y2="${Yc(1)}" stroke="${css("--line")}" stroke-width="1"/>`;
+  for (const v of [0,0.25,0.5,0.75,1]) h+=`<text x="${Xc(v)}" y="${S-p+16}" text-anchor="middle">${Math.round(v*100)}%</text><text x="${p-6}" y="${Yc(v)+3}" text-anchor="end">${Math.round(v*100)}%</text>`;
+  h+=`<text x="${(p+S)/2}" y="${S-2}" text-anchor="middle">predicted chance of cold</text><text transform="translate(10 ${(S-p)/2}) rotate(-90)" text-anchor="middle">actually cold</text>`;
+  h+=`<polyline fill="none" stroke="${css("--s1")}" stroke-width="2" points="${C.map(c=>`${Xc(c.pred)},${Yc(c.obs)}`).join(" ")}"/>`;
+  C.forEach(c=>h+=`<g data-tip="${esc(`predicted ${Math.round(c.pred*100)}% → observed ${Math.round(c.obs*100)}%<br>${c.n} roads`)}"><circle cx="${Xc(c.pred)}" cy="${Yc(c.obs)}" r="5" fill="${css("--s1")}" stroke="${css("--panel")}" stroke-width="2"/><circle cx="${Xc(c.pred)}" cy="${Yc(c.obs)}" r="12" fill="transparent"/></g>`);
+  $("#calib").innerHTML=`<svg viewBox="0 0 ${S} ${S}" style="max-width:340px;margin:auto" role="img" aria-label="Calibration plot">${h}</svg>`; bindTips($("#calib"));
+}
+
+// ---------- 7. hospitals
+const SHORT = {"MedStar Washington Hospital Center":"Washington Hosp. Center","Children's National Hospital":"Children's National",
+  "George Washington University Hospital":"GW University Hosp.","Howard University Hospital":"Howard University Hosp.",
+  "MedStar Georgetown University Hospital":"Georgetown Univ. Hosp.","Sibley Memorial Hospital":"Sibley Memorial",
+  "Washington DC VA Medical Center":"DC VA Medical Center","Cedar Hill Regional Medical Center":"Cedar Hill Regional"};
+const short = n => SHORT[n] || n;
+function hospitals(){
+  const A=[...R.hospital_by_area].sort((a,b)=>b.mean_p-a.mean_p);
+  $("#hospSub").innerHTML = `The classifier, trained citywide, scores every hospital access road. It agrees with our physics engine's cold ranking at Spearman ρ = <b>${R.engine_agreement.rho}</b>. That's positive but partial: the engine leans on bridges and heat island, while the data-driven model leans on tree canopy and elevation. Combining both is a Round 2 step.`;
+  const W=400, padL=170, padR=46, rowH=30, H=A.length*rowH+8, X=v=>padL+(W-padL-padR)*v;
+  let g=""; A.forEach((a,i)=>{ const y=i*rowH+4;
+    g+=`<g data-tip="${esc(`<b>${a.hosp}</b><br>average P(cold) = ${Math.round(a.mean_p*100)}%<br>${a.n} corridor roads`)}"><rect x="0" y="${y}" width="${W}" height="${rowH-4}" fill="transparent"/>
+      <text class="lab" x="${padL-8}" y="${y+16}" text-anchor="end">${esc(short(a.hosp))}</text>
+      <rect x="${padL}" y="${y+4}" width="${Math.max(2,X(a.mean_p)-padL)}" height="16" rx="4" fill="${css("--s1")}"/>
+      <text x="${X(a.mean_p)+5}" y="${y+16}">${Math.round(a.mean_p*100)}%</text></g>`; });
+  $("#hospBars").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cold probability by hospital">${g}</svg><p class="note">Citywide baseline is 25% by definition.</p>`; bindTips($("#hospBars"));
+  $("#topRoads").innerHTML = `<thead><tr><th>Road</th><th>Serves</th><th class="n">P(cold)</th><th class="n">Canopy</th></tr></thead><tbody>` +
+    R.hospital_top.slice(0,10).map(r=>`<tr><td>${esc(r.name)}${r.bridge?" <span class='note'>(bridge)</span>":""}</td><td class="note">${esc(short(r.hosp))}</td><td class="n">${Math.round(r.p*100)}%</td><td class="n">${Math.round(r.canopy)}%</td></tr>`).join("") + `</tbody>`;
+}
+
+// ---------- method
+$("#method").innerHTML = `
+<p><b>Sample.</b> ${R.n_sample.toLocaleString()} segments drawn at random from DC's 13,513 drivable OpenStreetMap road segments (over 40 m, no tunnels). Each is buffered 15 m and averaged in Google Earth Engine.</p>
+<p><b>Measured targets</b> (none come from our model): Landsat 8/9 winter surface temperature (clear days, Dec–Feb 2022–25, 30 m, cloud/shadow/snow masked) · Sentinel-2 snow share in 5 clear scenes, Jan 7–20, 2025 · MODIS winter night surface temperature (1 km). Temperatures are anomalies versus the DC median.</p>
+<p><b>Factors:</b> USGS 3DEP 10 m elevation, road grade, slope aspect and terrain shadow at five Jan 6 sun positions · NLCD 2023 tree canopy · NLCD 2021 impervious surface · JRC GHSL building height (100 m) · JRC Global Surface Water distance · OpenStreetMap bridge tag.</p>
+<p><b>Models.</b> Ordinary least squares on standardized factors, with errors clustered by 1 km cell. Gradient-boosted trees as a non-linear comparison. Logistic regression for the coldest-quartile class. Out-of-sample skill uses 5-fold random and 5-fold spatial (2 km block) cross-validation. Multicollinearity (VIF) is highest for canopy (${R.vif[1]}) and impervious surface (${R.vif[2]}), which tend to be opposites, so read those two together.</p>
+<p><b>Limits.</b> This shows association, not proof of cause. Landsat passes over at about 10:30 am, so it measures daytime behavior. Ice risk peaks before dawn, and the only night sensor (MODIS) is coarse. Satellites measure the surface and its surroundings within 15 m, not the pavement alone. Fitting the engine to in-road sensor (RWIS) readings is the Round 2 step that turns these associations into calibrated predictions.</p>`;
+
+forest(); scatter(); heat(); skill(); logit(); hospitals();
+</script>
+<script>
+// =====================================================================================
+// PART 1 · LIVE — runs on data/live.js (NWS forecast + Earth Engine road variables)
+// =====================================================================================
+(function(){
+const L = window.LIVE;
+const box = document.getElementById("live");
+if (!L || !L.grid_weather) {
+  document.getElementById("liveStatus").innerHTML = `<div class="callout warn">No live forecast loaded. Start the demo with <code>python3 serve.py</code> and click <b>Refresh forecast</b> below, or run <code>python3 live_plan.py</code>.</div><button class="btn" id="lRefresh0">↻ Refresh forecast</button>`;
+  [...box.children].slice(2).forEach(el=>el.style.display="none");
+  const b=document.getElementById("lRefresh0"); if (b) b.onclick=()=>refresh();
+  return;
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const tip = document.getElementById("tip");
+const showTip=(e,h)=>{tip.innerHTML=h;tip.style.opacity=1;tip.style.left=Math.min(e.clientX+14,innerWidth-290)+"px";tip.style.top=(e.clientY+14)+"px";};
+const hideTip=()=>tip.style.opacity=0;
+const bind = root => root.querySelectorAll("[data-tip]").forEach(el=>{el.onmousemove=e=>showTip(e,el.dataset.tip);el.onmouseleave=hideTip;});
+const mix=(a,b,k)=>{const p=h=>[1,3,5].map(j=>parseInt(h.slice(j,j+2),16));const A=p(a),B=p(b);return "#"+A.map((v,j)=>Math.round(v+(B[j]-v)*k).toString(16).padStart(2,"0")).join("");};
+const H = L.hours.length;
+const fmtT = i => new Date(L.hours[i]).toLocaleString("en-US",{weekday:"short",hour:"numeric"});
+const HOSP = Object.fromEntries(L.hospitals.map(h=>[h.id,h]));
+const SHORTH = {mwhc:"Washington Hosp. Ctr",cnh:"Children's National",gwu:"GW University",hu:"Howard University",mgu:"Georgetown Univ.",sib:"Sibley Memorial",va:"DC VA Medical Ctr",chr:"Cedar Hill"};
+const SEGS = L.segments.map((s,i)=>({...s, i})).filter(s=>!s.tunnel && s.gee && Object.keys(s.gee).length);
+const PAV = i => L.seg_pavement[i];                    // tenths of °F
+const night = t => L.weather[t].sw < 20;
+
+// ---------- the engine, ported 1:1 from thermal.py ----------
+const K = {SUN:0.022, GROUND:0.35, UHI:1.5, LAPSE:0.012, SATN:0.25, SATD:0.15};
+function exposure(f){
+  const canopy=(f.canopy_pct||0)/100, built=f.built_h_m||0, lit=f.sun_lit_frac==null?1:f.sun_lit_frac;
+  const north=Math.max(0,f.northness||0)*Math.min(1,(f.grade_pct||0)/8);
+  return {sun: lit*(1-0.5*canopy)*(1-Math.min(0.6,built/25))*(1-0.3*north), svf:(1-0.4*canopy)*(1-Math.min(0.5,built/40))};
+}
+function terms(w, bridge, f){
+  const {sun,svf}=exposure(f), nt=w.sw<20;
+  const sky = nt ? (1-w.cloud/100)*(bridge?5:3) : 0;
+  const a = nt ? f.lst_night_anom_f : f.lst_day_anom_f;
+  return {air:w.air, sun:K.SUN*w.sw*sun, ground: bridge?0:K.GROUND*(w.soil-w.air), sky:-sky*svf,
+          uhi:K.UHI*(f.impervious_pct||0)/100, lapse:-K.LAPSE*((f.elev_m||20)-20), sat:(nt?K.SATN:K.SATD)*(a||0)};
+}
+const eqT = (w,bridge,f) => { let e=Object.values(terms(w,bridge,f)).reduce((a,b)=>a+b,0); if (w.snow>0) e=Math.min(e,32); return e; };
+const wxOf = s => L.grid_weather[HOSP[s.hosp].grid];
+function series(s){ let tp=null; return wxOf(s).map(w=>{ const e=eqT(w,s.bridge,s.gee); tp = tp==null? e : tp+(s.bridge?0.7:0.4)*(e-tp); return tp; }); }
+// self-check: the browser engine must reproduce the Python engine's stored output
+let maxDiff=0; SEGS.filter((_,k)=>k%25===0).forEach(s=>{ series(s).forEach((v,t)=>{ maxDiff=Math.max(maxDiff,Math.abs(v-PAV(s.i)[t]/10)); }); });
+
+// ---------- status + refresh ----------
+async function refresh(drill=0){
+  const m=document.getElementById("lMsg"); if(m) m.textContent="Fetching NWS forecast…";
+  try{ const r=await fetch(`/api/refresh?drill=${drill}`,{method:"POST"}); const j=await r.json(); if(!j.ok) throw new Error(j.error); location.reload(); }
+  catch(e){ if(m) m.innerHTML = (e instanceof TypeError||e instanceof SyntaxError) ? "Refresh needs the demo server: run <code>python3 serve.py</code>." : "NWS error: "+esc(e.message); }
+}
+const LV=L.live, iss = LV.issued ? new Date(LV.issued).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "?";
+document.getElementById("liveStatus").innerHTML = `
+  <div class="callout ${LV.drill_f?"warn":""}">${LV.drill_f ? `<b>DRILL, not a real forecast:</b> the NWS forecast shifted ${LV.drill_f}°F colder. ` : STATIC ? `<b>Forecast snapshot.</b> ` : `<b>Live.</b> `}
+  NWS forecast issued <b>${iss}</b> for ${LV.grids.length} forecast grid cells across 8 hospitals, next ${H} hours. Fetched ${new Date(LV.fetched).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}.
+  Road variables come from Google Earth Engine. The in-browser engine reproduces the forecast engine to within <b>${maxDiff.toFixed(2)}°F</b>.</div>
+  ${STATIC ? `<p class="note">This shared copy is a snapshot. The live version refreshes from the National Weather Service when run with the demo server.</p>`
+           : `<div class="row"><button class="btn" id="lRefresh">↻ Refresh forecast</button><button class="btn" id="lDrill" title="Rehearsal only">Drill −25°F</button><span class="note" id="lMsg"></span></div>`}`;
+if (!STATIC) { document.getElementById("lRefresh").onclick=()=>refresh(0); document.getElementById("lDrill").onclick=()=>refresh(25); }
+
+// ---------- shared hour state ----------
+let hour = L.pavement_median.indexOf(Math.min(...L.pavement_median));
+const slider = document.getElementById("lHour"); slider.max=H-1;
+const subs=[];
+function setHour(h){ hour=Math.max(0,Math.min(H-1,h)); slider.value=hour;
+  const w=L.weather[hour];
+  document.getElementById("lHourLab").textContent = `${fmtT(hour)} · ${night(hour)?"night":"day"}`;
+  document.getElementById("lWx").innerHTML = `Air <b>${w.air.toFixed(0)}°F</b> · dew point <b>${w.dew.toFixed(0)}°F</b> · cloud <b>${Math.round(w.cloud)}%</b> · sun <b>${Math.round(w.sw)} W/m²</b> · ${w.precip>0?`precip <b>${w.precip.toFixed(2)} in/h</b>`:"dry"} · typical road <b>${(L.pavement_median[hour]).toFixed(0)}°F</b>`;
+  subs.forEach(f=>f()); }
+slider.oninput=()=>setHour(+slider.value);
+let timer=null; document.getElementById("lPlay").onclick=e=>{
+  if(timer){clearInterval(timer);timer=null;e.target.textContent="▶ Play 48 h";return;}
+  e.target.textContent="❚❚ Pause"; timer=setInterval(()=>setHour(hour>=H-1?0:hour+1),420); };
+
+// ---------- L1 small multiples ----------
+const FACT = [
+  {k:"canopy_pct", l:"Tree canopy", u:"%"},
+  {k:"built_h_m", l:"Building height", u:"m"},
+  {k:"impervious_pct", l:"Impervious surface", u:"%"},
+  {k:"elev_m", l:"Elevation", u:"m"},
+  {k:"sun_lit_frac", l:"Sun not blocked by terrain", u:"share", f:v=>v},
+  {k:"lst_night_anom_f", l:"Satellite night spot", u:"°F"},
+  {k:"water_dist_m", l:"Distance to water", u:"m (log)", f:v=>Math.log10(Math.max(1,v))},
+];
+const val = (s,F) => { const v=s.gee[F.k]; return v==null?null:(F.f?F.f(v):v); };
+const allT = SEGS.flatMap(s=>[Math.min(...PAV(s.i)),Math.max(...PAV(s.i))]).map(v=>v/10);
+const yMin=Math.floor(Math.min(...allT,30)/5)*5, yMax=Math.ceil(Math.max(...allT)/5)*5;
+const panels = FACT.map(F=>{
+  const W=330,Hh=230,pl=36,pr=10,pt=24,pb=30;
+  const pts=SEGS.map(s=>({s,x:val(s,F)})).filter(p=>p.x!=null);
+  const xs=pts.map(p=>p.x), x0=Math.min(...xs), x1=Math.max(...xs);
+  const X=v=>pl+(W-pl-pr)*(v-x0)/((x1-x0)||1), Y=v=>pt+(Hh-pt-pb)*(1-(v-yMin)/(yMax-yMin));
+  const div=document.createElement("div"); div.className="panel"; document.getElementById("multiples").appendChild(div);
+  let g=`<text x="${pl}" y="14" class="lab" style="font-weight:600">${esc(F.l)}</text><text x="${W-pr}" y="14" text-anchor="end" class="slope"></text>`;
+  for(let v=yMin; v<=yMax; v+=10) g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${pl-5}" y="${Y(v)+3}" text-anchor="end">${v}°</text>`;
+  g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(32)}" y2="${Y(32)}" stroke="${css("--warm")}" stroke-width="1"/>`;
+  [x0,(x0+x1)/2,x1].forEach(v=>g+=`<text x="${X(v)}" y="${Hh-12}" text-anchor="middle">${F.k==="water_dist_m"?Math.round(10**v):(Math.abs(v)<10?v.toFixed(1):Math.round(v))}</text>`);
+  g+=`<text x="${(pl+W-pr)/2}" y="${Hh-1}" text-anchor="middle">${esc(F.u)}</text>`;
+  g+=`<g class="dots">${pts.map(p=>`<circle cx="${X(p.x)}" r="${p.s.bridge?3.2:2}" fill="${p.s.bridge?css("--s2"):css("--s1")}" fill-opacity="${p.s.bridge?0.9:0.25}"/>`).join("")}</g><line class="fit" stroke="${css("--ink")}" stroke-width="2"/>`;
+  div.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Road temperature versus ${esc(F.l)}">${g}</svg>`;
+  const svg=div.querySelector("svg"), dots=[...svg.querySelectorAll(".dots circle")], fit=svg.querySelector(".fit"), slope=svg.querySelector(".slope");
+  // bridges drawn last so they sit on top
+  pts.forEach((p,k)=>{ if(p.s.bridge) svg.querySelector(".dots").appendChild(dots[k]); });
+  svg.onmousemove=e=>{ const r=svg.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*Hh/r.height;
+    let best=null,bd=1e9; pts.forEach(p=>{ const d=(X(p.x)-mx)**2+(Y(PAV(p.s.i)[hour]/10)-my)**2; if(d<bd){bd=d;best=p;} });
+    if(best && bd<200) showTip(e,`<b>${esc(best.s.name)}</b>${best.s.bridge?" (bridge)":""}<br>${esc(SHORTH[best.s.hosp])}<br>${esc(F.l)}: ${F.k==="water_dist_m"?Math.round(best.s.gee[F.k]):(+best.s.gee[F.k]).toFixed(1)} ${esc(F.u.replace(" (log)",""))}<br>road ${(PAV(best.s.i)[hour]/10).toFixed(1)}°F`); else hideTip(); };
+  svg.onmouseleave=hideTip;
+  return ()=>{
+    let sx=0,sy=0,sxx=0,sxy=0,n=pts.length;
+    pts.forEach((p,k)=>{ const y=PAV(p.s.i)[hour]/10; dots[k].setAttribute("cy",Y(y)); sx+=p.x; sy+=y; sxx+=p.x*p.x; sxy+=p.x*y; });
+    const b=(n*sxy-sx*sy)/((n*sxx-sx*sx)||1), a=(sy-b*sx)/n;
+    fit.setAttribute("x1",X(x0)); fit.setAttribute("x2",X(x1)); fit.setAttribute("y1",Y(a+b*x0)); fit.setAttribute("y2",Y(a+b*x1));
+    const span=(x1-x0); slope.textContent = `${b*span>=0?"+":""}${(b*span).toFixed(1)}°F across range`;
+    slope.style.fill = Math.abs(b*span)<0.3 ? css("--muted") : (b>0?css("--warm"):css("--cool"));
+  };
+});
+subs.push(()=>panels.forEach(f=>f()));
+
+// ---------- L2 effects over time (multiple regression per hour) ----------
+const EF=[{k:"canopy_pct",l:"Tree canopy",c:"--s1"},{k:"built_h_m",l:"Building height",c:"--s2"},{k:"impervious_pct",l:"Impervious surface",c:"--s3"},{k:"elev_m",l:"Elevation",c:"--s4"},{k:"bridge",l:"Bridge",c:"--s5"}];
+const XM = SEGS.map(s=>EF.map(e=>e.k==="bridge"?(s.bridge?1:0):(s.gee[e.k]||0)));
+const mu=EF.map((_,j)=>XM.reduce((a,r)=>a+r[j],0)/XM.length), sd=EF.map((_,j)=>Math.sqrt(XM.reduce((a,r)=>a+(r[j]-mu[j])**2,0)/XM.length)||1);
+const Z = XM.map(r=>[1,...r.map((v,j)=>(v-mu[j])/sd[j])]);
+function ols(y){ const p=Z[0].length, A=Array.from({length:p},()=>Array(p+1).fill(0));
+  Z.forEach((z,n)=>{ for(let i=0;i<p;i++){ for(let j=0;j<p;j++) A[i][j]+=z[i]*z[j]; A[i][p]+=z[i]*y[n]; } });
+  for(let c=0;c<p;c++){ let m=c; for(let r=c+1;r<p;r++) if(Math.abs(A[r][c])>Math.abs(A[m][c])) m=r; [A[c],A[m]]=[A[m],A[c]];
+    for(let r=0;r<p;r++) if(r!==c){ const f=A[r][c]/A[c][c]; for(let k=c;k<=p;k++) A[r][k]-=f*A[c][k]; } }
+  return A.map((r,i)=>r[p]/r[i]); }
+const COEF = L.hours.map((_,t)=>ols(SEGS.map(s=>PAV(s.i)[t]/10)).slice(1));
+(function(){
+  const W=900,Hh=300,pl=48,pr=130,pt=12,pb=30;
+  const all=COEF.flat(), lim=Math.max(0.5,...all.map(Math.abs))*1.1;
+  const X=t=>pl+(W-pl-pr)*t/(H-1), Y=v=>pt+(Hh-pt-pb)*(1-(v+lim)/(2*lim));
+  let g="";
+  L.weather.forEach((w,t)=>{ if(w.sw<20) g+=`<rect x="${X(t)-(W-pl-pr)/(H-1)/2}" y="${pt}" width="${(W-pl-pr)/(H-1)}" height="${Hh-pt-pb}" fill="${css("--grid")}"/>`; });
+  [-lim,-lim/2,0,lim/2,lim].forEach(v=>g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v===0?css("--ink-2"):css("--line")}" stroke-width="${v===0?1:0.6}"/><text x="${pl-6}" y="${Y(v)+3}" text-anchor="end">${v>0?"+":""}${v.toFixed(1)}</text>`);
+  L.hours.forEach((h,t)=>{ if(/T(00|12):00$/.test(h)) g+=`<text x="${X(t)}" y="${Hh-10}" text-anchor="middle">${fmtT(t)}</text>`; });
+  g+=`<text transform="translate(12 ${(pt+Hh-pb)/2}) rotate(-90)" text-anchor="middle">°F per 1 SD of factor</text>`;
+  EF.forEach((e,j)=>{ g+=`<polyline fill="none" stroke="${css(e.c)}" stroke-width="2" points="${COEF.map((c,t)=>`${X(t)},${Y(c[j])}`).join(" ")}"/>`;
+    const yl=Y(COEF[H-1][j]); g+=`<text x="${W-pr+8}" y="${yl+4}" class="lab elab" data-j="${j}">${esc(e.l)}</text>`; });
+  g+=`<line id="effCur" y1="${pt}" y2="${Hh-pb}" stroke="${css("--ink")}" stroke-width="1"/><rect id="effHit" x="${pl}" y="${pt}" width="${W-pl-pr}" height="${Hh-pt-pb}" fill="transparent"/>`;
+  const el=document.getElementById("effects"); el.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Factor effects over the forecast">${g}</svg>`;
+  // de-collide end labels
+  const labs=[...el.querySelectorAll(".elab")].sort((a,b)=>a.getAttribute("y")-b.getAttribute("y")); let last=-1e9;
+  labs.forEach(t=>{ let y=+t.getAttribute("y"); if(y<last+13) y=last+13; t.setAttribute("y",y); last=y; });
+  const svg=el.querySelector("svg");
+  svg.querySelector("#effHit").onmousemove=e=>{ const r=svg.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width; const t=Math.max(0,Math.min(H-1,Math.round((mx-pl)/(W-pl-pr)*(H-1))));
+    showTip(e,`<b>${fmtT(t)}</b> (${night(t)?"night":"day"})<br>`+EF.map((f,j)=>`<span class="sw" style="background:${css(f.c)}"></span>${esc(f.l)}: ${COEF[t][j]>0?"+":""}${COEF[t][j].toFixed(2)}°F`).join("<br>")); };
+  svg.querySelector("#effHit").onmouseleave=hideTip;
+  svg.querySelector("#effHit").onclick=e=>{ const r=svg.getBoundingClientRect(); setHour(Math.round(((e.clientX-r.left)*W/r.width-pl)/(W-pl-pr)*(H-1))); };
+  document.getElementById("effLegend").innerHTML = EF.map(e=>`<span><span class="sw" style="background:${css(e.c)}"></span>${esc(e.l)}</span>`).join("")+`<span><span class="sw" style="background:${css("--grid")};border-radius:2px"></span>night</span><span>click to jump to an hour</span>`;
+  subs.push(()=>{ const c=svg.querySelector("#effCur"); c.setAttribute("x1",X(hour)); c.setAttribute("x2",X(hour)); });
+})();
+
+// ---------- L3 air vs road ----------
+(function(){
+  const S=420,pl=42,pb=34,pt=10,pr=10;
+  const med=L.pavement_median, br=L.hours.map((_,t)=>Math.min(...SEGS.filter(s=>s.bridge).map(s=>PAV(s.i)[t]/10)));
+  const air=L.weather.map(w=>w.air), all=[...med,...br,...air], lo=Math.floor(Math.min(...all)/5)*5-2, hi=Math.ceil(Math.max(...all)/5)*5+2;
+  const X=v=>pl+(S-pl-pr)*(v-lo)/(hi-lo), Y=v=>S-pb-(S-pb-pt)*(v-lo)/(hi-lo);
+  let g=""; for(let v=Math.ceil(lo/10)*10; v<=hi; v+=10) g+=`<line x1="${pl}" x2="${S-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${pl-5}" y="${Y(v)+3}" text-anchor="end">${v}°</text><text x="${X(v)}" y="${S-pb+14}" text-anchor="middle">${v}°</text>`;
+  g+=`<line x1="${X(lo)}" y1="${Y(lo)}" x2="${X(hi)}" y2="${Y(hi)}" stroke="${css("--ink-2")}" stroke-dasharray="4 3"/><text x="${X(hi)-4}" y="${Y(hi)+14}" text-anchor="end">road = air</text>`;
+  if (lo<32) g+=`<line x1="${pl}" x2="${S-pr}" y1="${Y(32)}" y2="${Y(32)}" stroke="${css("--warm")}"/>`;
+  g+=`<text x="${(pl+S)/2}" y="${S-4}" text-anchor="middle">forecast air temperature</text><text transform="translate(11 ${(S-pb)/2}) rotate(-90)" text-anchor="middle">predicted road temperature</text>`;
+  [[med,"--s1","typical road"],[br,"--s2","coldest bridge"]].forEach(([arr,c,n])=>arr.forEach((v,t)=>{ const nt=night(t);
+    g+=`<g data-tip="${esc(`<b>${fmtT(t)}</b> (${nt?"night":"day"})<br>air ${air[t].toFixed(0)}°F → ${n} ${v.toFixed(1)}°F (${v-air[t]>=0?"+":""}${(v-air[t]).toFixed(1)})`)}"><circle cx="${X(air[t])}" cy="${Y(v)}" r="4.5" fill="${nt?css("--panel"):css(c)}" stroke="${css(c)}" stroke-width="1.6"/><circle cx="${X(air[t])}" cy="${Y(v)}" r="9" fill="transparent"/></g>`; }));
+  const el=document.getElementById("airRoad"); el.innerHTML=`<svg viewBox="0 0 ${S} ${S}" role="img" aria-label="Air versus road temperature">${g}</svg>`; bind(el);
+})();
+
+// ---------- L4 histogram ----------
+(function(){
+  const W=420,Hh=300,pl=40,pr=10,pt=10,pb=34;
+  const el=document.getElementById("hist");
+  const lo=Math.floor(Math.min(...allT)), hi=Math.ceil(Math.max(...allT))+1;
+  const X=v=>pl+(W-pl-pr)*(v-lo)/(hi-lo);
+  subs.push(()=>{
+    const bins={}; let below=0, lmBelow=0;
+    SEGS.forEach(s=>{ const v=PAV(s.i)[hour]/10; const b=Math.floor(v); bins[b]=(bins[b]||0)+1; if(v<=32){below++; lmBelow+=s.lane_mi;} });
+    const maxN=Math.max(...Object.values(bins)), Y=n=>Hh-pb-(Hh-pb-pt)*n/maxN;
+    let g=""; [0,0.5,1].forEach(f=>{ const n=Math.round(maxN*f); g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(n)}" y2="${Y(n)}" stroke="${css("--grid")}"/><text x="${pl-5}" y="${Y(n)+3}" text-anchor="end">${n}</text>`; });
+    Object.entries(bins).forEach(([b,n])=>{ b=+b; const cold=b<32;
+      g+=`<g data-tip="${esc(`${b}–${b+1}°F: <b>${n}</b> roads`)}"><rect x="${X(b)+1}" y="${Y(n)}" width="${Math.max(1,X(b+1)-X(b)-2)}" height="${Hh-pb-Y(n)}" rx="2" fill="${cold?css("--cool"):css("--s1")}" fill-opacity="${cold?1:0.55}"/></g>`; });
+    if (lo<=32 && hi>=32) g+=`<line x1="${X(32)}" x2="${X(32)}" y1="${pt}" y2="${Hh-pb}" stroke="${css("--warm")}" stroke-width="1.5"/><text x="${X(32)+4}" y="${pt+10}" style="fill:${css("--warm")}">32°F</text>`;
+    for(let v=Math.ceil(lo/5)*5; v<=hi; v+=5) g+=`<text x="${X(v)}" y="${Hh-pb+14}" text-anchor="middle">${v}°</text>`;
+    g+=`<text x="${(pl+W)/2}" y="${Hh-4}" text-anchor="middle">predicted road temperature</text>`;
+    el.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Distribution of road temperatures">${g}</svg>`; bind(el);
+    document.getElementById("histStats").innerHTML = below ? `<b>${below}</b> of ${SEGS.length} roads (<b>${lmBelow.toFixed(0)}</b> lane-miles) at or below 32°F at ${fmtT(hour)}.` : `No hospital access road is at or below 32°F at ${fmtT(hour)}. The coldest is <b>${(Math.min(...SEGS.map(s=>PAV(s.i)[hour]))/10).toFixed(1)}°F</b>.`;
+  });
+})();
+
+// ---------- L5 hospital x hour heatmap ----------
+(function(){
+  const ids=L.hospitals.map(h=>h.id), W=900, pl=150, pr=10, pt=8, rowH=26, pb=26, Hh=pt+ids.length*rowH+pb, cw=(W-pl-pr)/H;
+  const med = ids.map(id=>L.hours.map((_,t)=>{ const v=SEGS.filter(s=>s.hosp===id).map(s=>PAV(s.i)[t]/10).sort((a,b)=>a-b); return v[Math.floor(v.length/2)]; }));
+  let mode="abs";
+  const draw=()=>{
+  let g="";
+  ids.forEach((id,r)=>{ g+=`<text class="lab" x="${pl-8}" y="${pt+r*rowH+rowH/2+4}" text-anchor="end">${esc(SHORTH[id])}</text>`;
+    med[r].forEach((v,t)=>{ const ref = mode==="abs" ? 32 : L.pavement_median[t], d=v-ref, col = mix(css("--mid-bg"), d<0?css("--cool"):css("--warm"), Math.min(1,Math.abs(d)/(mode==="abs"?20:3)));
+      g+=`<g data-tip="${esc(`<b>${HOSP[id].name}</b><br>${fmtT(t)}: typical road ${v.toFixed(1)}°F<br>${mode==="abs"?`${d>=0?"+":""}${d.toFixed(1)}°F vs freezing`:`${d>=0?"+":""}${d.toFixed(1)}°F vs citywide typical road`}`)}"><rect x="${pl+t*cw+0.5}" y="${pt+r*rowH+1}" width="${Math.max(1,cw-1)}" height="${rowH-2}" rx="2" fill="${col}"/></g>`; }); });
+  L.hours.forEach((h,t)=>{ if(/T(00|12):00$/.test(h)) g+=`<text x="${pl+t*cw+cw/2}" y="${Hh-8}" text-anchor="middle">${fmtT(t)}</text>`; });
+  g+=`<rect id="hmCur" y="${pt-2}" height="${ids.length*rowH+4}" width="${cw}" fill="none" stroke="${css("--ink")}" stroke-width="1.5" rx="2"/>`;
+  const el=document.getElementById("hospHeat"); el.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Typical road temperature by hospital and hour">${g}</svg>`; bind(el);
+  el.querySelector("#hmCur").setAttribute("x",pl+hour*cw);
+  document.getElementById("hmLeg").innerHTML = mode==="abs"
+    ? `<span><span class="sw" style="background:var(--cool)"></span>below freezing</span><span><span class="sw" style="background:var(--mid-bg);outline:1px solid var(--line)"></span>32°F</span><span><span class="sw" style="background:var(--warm)"></span>above freezing (full color at ±20°F)</span>`
+    : `<span><span class="sw" style="background:var(--cool)"></span>colder than citywide</span><span><span class="sw" style="background:var(--mid-bg);outline:1px solid var(--line)"></span>same</span><span><span class="sw" style="background:var(--warm)"></span>warmer (full color at ±3°F)</span>`;
+  };
+  document.querySelectorAll("#hmMode button").forEach(b=>b.onclick=()=>{ mode=b.dataset.m; document.querySelectorAll("#hmMode button").forEach(x=>x.classList.toggle("on",x===b)); draw(); });
+  draw();
+  subs.push(()=>document.querySelector("#hmCur").setAttribute("x",pl+hour*cw));
+})();
+
+// ---------- L6 waterfall ----------
+const LAB = {air:"Forecast air temp", sun:"Sun reaching road", ground:"Ground heat", sky:"Night-sky cooling", uhi:"Urban heat island", lapse:"Elevation", sat:"Satellite warm/cold spot"};
+function waterfall(el, parts, total, title, W=860){
+  const steps=Object.entries(parts); const rowH=28,pl=180,pr=70,pt=6,Hh=pt+(steps.length+1)*rowH+22;
+  let run=0; const vals=[]; steps.forEach(([k,v],i)=>{ const a=i===0?0:run; run=i===0?v:run+v; vals.push([k,v,a,run]); });
+  const xs=[0,...vals.flatMap(v=>[v[2],v[3]]),total].filter(v=>v!==0||true), lo=Math.min(...vals.flatMap(v=>[v[2],v[3]]).filter((_,i)=>i>0),total)-3, hi=Math.max(...vals.flatMap(v=>[v[3]]),total)+3;
+  const lo2=Math.min(lo, parts.air-3), X=v=>pl+(W-pl-pr)*(v-lo2)/(hi-lo2);
+  let g="";
+  if (lo2<32 && hi>32) g+=`<line x1="${X(32)}" x2="${X(32)}" y1="${pt}" y2="${Hh-20}" stroke="${css("--warm")}"/><text x="${X(32)}" y="${Hh-6}" text-anchor="middle" style="fill:${css("--warm")}">32°F</text>`;
+  vals.forEach(([k,v,a,b],i)=>{ const y=pt+i*rowH, first=i===0, x0=first?X(lo2):X(Math.min(a,b)), x1=first?X(b):X(Math.max(a,b));
+    const col= first?css("--mid"): (v<0?css("--cool"):css("--warm"));
+    g+=`<g data-tip="${esc(`<b>${LAB[k]}</b>: ${first?"":v>=0?"+":""}${v.toFixed(2)}°F`)}"><rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"/>
+      <text class="lab" x="${pl-8}" y="${y+rowH/2+4}" text-anchor="end">${LAB[k]}</text>
+      <rect x="${x0}" y="${y+5}" width="${Math.max(2,x1-x0)}" height="${rowH-10}" rx="3" fill="${col}"/>
+      <text x="${x1+5}" y="${y+rowH/2+4}">${first?v.toFixed(1)+"°F":(v>=0?"+":"")+v.toFixed(1)}</text></g>`; });
+  const y=pt+vals.length*rowH;
+  g+=`<text class="lab" x="${pl-8}" y="${y+rowH/2+4}" text-anchor="end" style="font-weight:700">${esc(title)}</text><rect x="${X(lo2)}" y="${y+4}" width="${X(total)-X(lo2)}" height="${rowH-8}" rx="3" fill="${css("--ink")}"/><text x="${X(total)+5}" y="${y+rowH/2+4}" style="fill:${css("--ink")};font-weight:700">${total.toFixed(1)}°F</text>`;
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Contribution of each factor">${g}</svg>`; bind(el);
+}
+const pick=document.getElementById("roadPick");
+function fillPick(sel, withHour){
+  sel.innerHTML="";
+  const byT=[...SEGS].sort((a,b)=>PAV(a.i)[hour]-PAV(b.i)[hour]);
+  const og=(label,arr)=>{ const o=document.createElement("optgroup"); o.label=label; arr.forEach(s=>o.appendChild(new Option(`${s.name}${s.bridge?" (bridge)":""} · ${SHORTH[s.hosp]} · ${(PAV(s.i)[hour]/10).toFixed(1)}°F`, s.i))); sel.appendChild(o); };
+  og(`Coldest roads at ${fmtT(hour)}`, byT.slice(0,8));
+  og("Last block to each ER", L.hospitals.map(h=>SEGS.filter(s=>s.hosp===h.id).sort((a,b)=>a.dist_m-b.dist_m)[0]).filter(Boolean));
+  og(`Warmest roads at ${fmtT(hour)}`, byT.slice(-4).reverse());
+}
+let pickedI=null;
+function drawWF(){
+  const s=SEGS.find(x=>x.i===+pick.value)||SEGS[0]; pickedI=s.i;
+  const w=wxOf(s)[hour], p=terms(w,s.bridge,s.gee), e=eqT(w,s.bridge,s.gee);
+  waterfall(document.getElementById("waterfall"), p, e, "Heading toward");
+  document.getElementById("wfNote").innerHTML = `<b>${esc(s.name)}</b>${s.bridge?" (bridge)":""}, ${esc(HOSP[s.hosp].name)}, ${fmtT(hour)} (NWS cell ${esc(HOSP[s.hosp].grid)}). Because pavement warms and cools gradually, the road is forecast to actually be <b>${(PAV(s.i)[hour]/10).toFixed(1)}°F</b> this hour.` + (w.snow>0?" Falling snow caps the road at 32°F.":"");
+}
+pick.onchange=drawWF;
+subs.push(()=>{ const keep=pickedI; fillPick(pick); if(keep!=null && [...pick.options].some(o=>+o.value===keep)) pick.value=keep; drawWF(); });
+
+// ---------- L7 simulator ----------
+const SIM = {
+  wx:[{k:"air",l:"Air temperature",min:-10,max:60,step:1,u:"°F"},{k:"dew",l:"Dew point",min:-20,max:60,step:1,u:"°F"},
+      {k:"cloud",l:"Cloud cover",min:0,max:100,step:5,u:"%"},{k:"sw",l:"Sunshine",min:0,max:700,step:10,u:"W/m²"},
+      {k:"soil",l:"Ground temperature",min:15,max:70,step:1,u:"°F"},{k:"precip",l:"Precipitation",opts:["none","snow","rain / freezing rain"]}],
+  road:[{k:"bridge",l:"Bridge",bool:true},{k:"canopy_pct",l:"Tree canopy",min:0,max:90,step:1,u:"%"},{k:"built_h_m",l:"Building height",min:0,max:40,step:1,u:"m"},
+        {k:"impervious_pct",l:"Impervious surface",min:0,max:100,step:1,u:"%"},{k:"elev_m",l:"Elevation",min:0,max:125,step:1,u:"m"},
+        {k:"sun_lit_frac",l:"Winter sun not blocked by terrain",min:0,max:1,step:0.05,u:""},{k:"lst_night_anom_f",l:"Satellite night spot",min:-3,max:3,step:0.1,u:"°F"}]
+};
+const st={};
+function ctl(c,host){ const id="sim_"+c.k, wrap=document.createElement("label"); wrap.className="ctl";
+  if(c.bool){ wrap.innerHTML=`<span>${c.l}</span><input type="checkbox" id="${id}">`; }
+  else if(c.opts){ wrap.innerHTML=`<span>${c.l}</span><select id="${id}">${c.opts.map(o=>`<option>${o}</option>`).join("")}</select>`; }
+  else wrap.innerHTML=`<span>${c.l} <b id="${id}_v"></b></span><input type="range" id="${id}" min="${c.min}" max="${c.max}" step="${c.step}">`;
+  host.appendChild(wrap); const inp=wrap.querySelector("input,select");
+  inp.oninput=inp.onchange=()=>{ st[c.k]= c.bool?inp.checked : c.opts?inp.value : +inp.value; simRun(); }; }
+SIM.wx.forEach(c=>ctl(c,document.getElementById("simWx"))); SIM.road.forEach(c=>ctl(c,document.getElementById("simRoad")));
+function syncCtl(){ [...SIM.wx,...SIM.road].forEach(c=>{ const el=document.getElementById("sim_"+c.k); if(c.bool) el.checked=!!st[c.k]; else el.value=st[c.k];
+  const v=document.getElementById("sim_"+c.k+"_v"); if(v) v.textContent=`${(+st[c.k]).toFixed(c.step<1?(c.step<0.1?1:2):0)}${c.u}`; }); }
+const simLoad=document.getElementById("simLoad");
+function loadRoad(){ const s=SEGS.find(x=>x.i===+simLoad.value)||SEGS[0], w=wxOf(s)[hour];
+  Object.assign(st,{air:Math.round(w.air),dew:Math.round(w.dew),cloud:Math.round(w.cloud),sw:Math.round(w.sw),soil:Math.round(w.soil),precip:w.snow>0?"snow":w.precip>0?"rain / freezing rain":"none",
+    bridge:s.bridge, canopy_pct:Math.round(s.gee.canopy_pct||0), built_h_m:Math.round(s.gee.built_h_m||0), impervious_pct:Math.round(s.gee.impervious_pct||0),
+    elev_m:Math.round(s.gee.elev_m||20), sun_lit_frac:+(s.gee.sun_lit_frac??1).toFixed(2), lst_night_anom_f:+(s.gee.lst_night_anom_f||0).toFixed(1), grade_pct:s.gee.grade_pct||0, northness:s.gee.northness||0, lst_day_anom_f:s.gee.lst_day_anom_f||0});
+  st._name=`${s.name}${s.bridge?" (bridge)":""}, ${SHORTH[s.hosp]}, ${fmtT(hour)}`; simRun(); }
+document.getElementById("simReset").onclick=loadRoad;
+function recommend(T, dew, precip, bridge){
+  if (T>33) return {state:"Above freezing", tone:"good", rec:"No salt needed."};
+  if (precip==="none") return dew>=T-1 ? {state:"Frost / black-ice risk", tone:"serious", rec:`Anti-ice with NaCl brine, ${bridge?25:20} gal/lane-mi, before the dew point reaches the surface.`}
+                                       : {state:"Cold but dry", tone:"warning", rec:"Watch only. Without moisture there's nothing to freeze, so salt would be wasted."};
+  const base = T>=25?120 : T>=20?175 : T>=15?240 : 300, rate=Math.round(base*(bridge?1.3:1)/10)*10;
+  const mat = T>=20 ? "prewetted rock salt" : T>=15 ? "rock salt prewetted with CaCl₂ (rock salt alone is weak here)" : "CaCl₂ blend plus abrasives (rock salt barely works below ~15°F)";
+  return {state: precip==="snow"?"Snow on a freezing road":"Freezing rain on a freezing road", tone:"critical",
+          rec: `${precip==="snow"?"Plow first, then ":""}${mat}, about ${rate} lb/lane-mi${bridge?" (bridge +30%)":""}. Minnesota band for ${T>=25?"25–32":T>=20?"20–25":T>=15?"15–20":"below 15"}°F.`};
+}
+function simRun(){
+  syncCtl();
+  const w={air:st.air,cloud:st.cloud,sw:st.sw,soil:st.soil,snow:st.precip==="snow"?0.3:0};
+  const f={canopy_pct:st.canopy_pct,built_h_m:st.built_h_m,impervious_pct:st.impervious_pct,elev_m:st.elev_m,sun_lit_frac:st.sun_lit_frac,
+           lst_night_anom_f:st.lst_night_anom_f,lst_day_anom_f:st.lst_day_anom_f||0,grade_pct:st.grade_pct||0,northness:st.northness||0};
+  const p=terms(w,st.bridge,f), T=eqT(w,st.bridge,f), r=recommend(T, Math.min(st.dew,st.air), st.precip, st.bridge);
+  const icon={good:"✓",warning:"!",serious:"▲",critical:"■"}[r.tone], col={good:"--good",warning:"--warning",serious:"--serious",critical:"--critical"}[r.tone];
+  document.getElementById("simHero").innerHTML = `<div class="note">${esc(st._name||"custom road")}</div>
+    <div class="simT">${T.toFixed(1)}°F</div><div class="note">road temperature it's heading toward · air ${st.air}°F (${T-st.air>=0?"+":""}${(T-st.air).toFixed(1)})</div>
+    <div class="chip" style="border-color:${css(col)}"><span style="color:${css(col)}">${icon}</span> <b>${r.state}</b></div><div class="rec">${r.rec}</div>`;
+  waterfall(document.getElementById("simWf"), p, T, "Road temperature", 560);
+}
+function fillSim(){ const keep=simLoad.value; fillPick(simLoad); if(keep && [...simLoad.options].some(o=>o.value===keep)) simLoad.value=keep; }
+fillSim(); loadRoad();
+subs.push(fillSim);
+
+setHour(hour);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hospital Salting Advisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data/basemap.js"></script>
+<script>
+  // mode lives in the #hash (the only URL state a shared link keeps); ?mode= still works locally
+  const MODE = (location.hash === "#live" || new URLSearchParams(location.search).get("mode") === "live") ? "live" : "replay";
+  // STATIC = no demo server behind the page (a shared link): no refresh, no cache-busting
+  const STATIC = !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  addEventListener("hashchange", () => location.reload());
+  document.write(MODE === "live"
+    ? '<script src="data/live.js' + (STATIC ? "" : "?v=" + Date.now()) + '"><\/script>'
+    : '<script src="data/replay.js"><\/script>');
+</script>
+<style>
+/* Winter operations console: one dark world (navy · charcoal · ice white); status colour is the only loud colour.
+   Layout: status strip → decision timeline → [plan + engine + readouts | map hero] → folded analytics. */
+:root{
+  color-scheme: dark;
+  --bg0:#05090f; --bg1:#0a111b; --panel:rgba(13,21,33,.68); --panel-2:rgba(18,28,43,.82); --solid:#0d1521;
+  --ink:#e9f2fb; --ink-2:#a8b8ca; --muted:#6c7e93; --line:rgba(150,195,240,.10); --line-2:rgba(150,195,240,.20);
+  --ice:#8fd0ff;
+  --red:#ff4f4f; --amber:#ffb224; --blue:#4fa3ff; --neutral:#334255; --planned:#3fdc95;
+  --state:var(--blue);
+  --bm-land:#0b131e; --bm-water:#0f2236; --bm-road:#16212f; --bm-edge:#22324a;
+  --brine:#2bc4bd; --prewet:#4f8ff7; --blend:#a27df0; --dry:#e3913e; --none:#2c3a4b; --warn:#ffb224; --bad:#ff7a6e; --crit:#ff4f4f;
+  --cold:#4fa3ff; --good:#3fdc95; --accent:#8fd0ff; --air:#6c7e93; --grade:#8fd0ff; --bridge:#ff7a6e; --snow:#24496b;
+  --f-ui:"Inter",-apple-system,"Segoe UI",Roboto,sans-serif; --f-num:"Space Grotesk","Inter",-apple-system,sans-serif;
+  --r:14px;
+}
+:root[data-state="deploy"]{--state:var(--red)} :root[data-state="prepare"]{--state:var(--amber)}
+:root[data-state="monitor"]{--state:var(--blue)} :root[data-state="clear"]{--state:var(--ice)} :root[data-state="planned"]{--state:var(--planned)}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg0)}
+body{margin:0;color:var(--ink);font:14px/1.5 var(--f-ui);font-feature-settings:"tnum" 1,"cv11" 1;-webkit-font-smoothing:antialiased}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.wrap{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding-inline:24px;padding-block:0 56px}
+button,select{font:inherit;color:var(--ink)}
+:focus-visible{outline:2px solid var(--ice);outline-offset:2px;border-radius:6px}
+.lbl{font:600 10.5px/1 var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  -webkit-backdrop-filter:blur(18px) saturate(130%);backdrop-filter:blur(18px) saturate(130%);box-shadow:0 20px 50px rgba(0,0,0,.35)}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:16px 14px}
+.brand{display:flex;align-items:center;gap:11px;margin-right:auto;min-width:0}
+.mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--line-2);background:linear-gradient(160deg,rgba(143,208,255,.18),rgba(143,208,255,.02))}
+.mark svg{width:16px;height:16px;color:var(--ice)}
+.brand b{display:block;font:600 14px/1.2 var(--f-ui);letter-spacing:.01em}
+.brand span{font-size:11.5px;color:var(--muted)}
+.seg{display:inline-flex;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.seg a{font:500 12.5px var(--f-ui);padding:6px 12px;border-radius:7px;color:var(--ink-2);text-decoration:none;white-space:nowrap}
+.seg a.on{background:rgba(143,208,255,.14);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(143,208,255,.25)}
+.src{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.btn-s{background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
+.btn-s:hover{color:var(--ink);border-color:var(--ice)}
+.clock{font:500 12px var(--f-num);color:var(--ink-2);padding:6px 10px;border:1px solid var(--line);border-radius:8px}
+.drill{margin-bottom:12px;padding:8px 14px;border-radius:10px;font-size:12.5px;border:1px solid var(--amber);background:rgba(255,178,36,.10)}
+
+/* status strip */
+.strip{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(260px,380px);gap:18px;align-items:center;padding:14px 18px}
+.status{display:flex;align-items:center;gap:12px;padding:10px 14px 10px 12px;border-radius:10px;min-width:250px;
+  background:color-mix(in srgb,var(--state) 10%,rgba(0,0,0,.25));border:1px solid color-mix(in srgb,var(--state) 45%,transparent);transition:all .5s}
+.led{width:10px;height:10px;border-radius:50%;background:var(--state);box-shadow:0 0 12px var(--state);flex:none}
+:root[data-state="deploy"] .led,:root[data-state="prepare"] .led{animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35;box-shadow:0 0 2px var(--state)}}
+.status .code{font:700 15px/1.1 var(--f-num);letter-spacing:.08em;color:var(--state);transition:color .5s;white-space:nowrap}
+.status .sub{font:500 11px/1.2 var(--f-ui);letter-spacing:.1em;color:var(--ink-2);text-transform:uppercase;margin-top:3px;white-space:nowrap}
+.status.scan{position:relative;overflow:hidden}
+.status.scan::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(143,208,255,.22),transparent);animation:scan 1s linear infinite}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.situation{margin:0;font:500 17px/1.35 var(--f-ui);color:var(--ink);text-wrap:balance;max-width:68ch}
+.situation small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted);font-weight:400}
+.scrub{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center}
+.scrub .lbl{grid-column:1/-1;display:flex;justify-content:space-between}
+.scrub .lbl b{font:500 11.5px var(--f-num);color:var(--ink);letter-spacing:.02em;text-transform:none}
+.play{width:28px;height:28px;border-radius:8px;border:1px solid var(--line-2);background:transparent;cursor:pointer;font-size:11px;display:grid;place-items:center}
+.scrub input{width:100%;accent-color:var(--state)}
+
+/* decision timeline */
+.timeline{margin-top:14px;padding:14px 18px 10px}
+.tl-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tl-head .q{font-size:12.5px;color:var(--ink-2)}
+#tl{display:block;width:100%;height:138px;margin-top:4px;overflow:visible}
+#tl text{font-family:var(--f-ui)}
+
+/* main grid */
+.grid{display:grid;grid-template-columns:minmax(330px,410px) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
+.col{display:grid;gap:16px;min-width:0}
+.card{padding:18px}
+.plan{position:relative;overflow:hidden;border-color:color-mix(in srgb,var(--state) 40%,var(--line));transition:border-color .5s}
+.plan::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--state),transparent);transition:background .5s}
+.plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.prio{font:600 10.5px var(--f-ui);letter-spacing:.12em;padding:3px 8px;border-radius:6px;border:1px solid var(--line-2);color:var(--ink-2)}
+.prio[data-p="HIGH"]{color:var(--red);border-color:rgba(255,79,79,.45)} .prio[data-p="MEDIUM"]{color:var(--amber);border-color:rgba(255,178,36,.45)}
+.headline{margin:10px 0 2px;font:600 22px/1.15 var(--f-num);letter-spacing:-.01em}
+.headline em{font-style:normal;color:var(--state);transition:color .5s}
+.zones{font-size:12.5px;color:var(--ink-2)}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+.m{background:var(--solid);padding:11px 12px;min-width:0}
+.m .k{font:500 10.5px var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.m .v{font:600 22px/1.15 var(--f-num);margin-top:3px}
+.m .s{font-size:11.5px;color:var(--ink-2)}
+.reveal .m,.reveal .headline,.reveal .zones,.reveal .cta{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.reveal .m:nth-child(2){animation-delay:.06s}.reveal .m:nth-child(3){animation-delay:.12s}.reveal .m:nth-child(4){animation-delay:.18s}.reveal .cta{animation-delay:.3s}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+.cta{width:100%;padding:13px 16px;border:0;border-radius:10px;cursor:pointer;font:700 13px var(--f-num);letter-spacing:.14em;text-transform:uppercase;
+  background:var(--state);color:#04101c;box-shadow:0 8px 28px color-mix(in srgb,var(--state) 35%,transparent);transition:background .5s, box-shadow .5s, filter .2s}
+.cta:hover{filter:brightness(1.08)}
+.cta.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-2);box-shadow:none}
+.cta-note{margin-top:8px;font-size:11.5px;color:var(--muted);min-height:1em}
+
+.engine .out{margin-top:10px;font:600 17px/1.3 var(--f-num)}
+.engine .out em{font-style:normal;color:var(--state)}
+.engine p{margin:6px 0 0;font-size:13px;color:var(--ink-2)}
+.trace{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.trace span{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+.why-btn{margin-top:12px;background:none;border:0;padding:0;color:var(--ice);font:600 12px var(--f-ui);cursor:pointer}
+.why-list{list-style:none;margin:10px 0 0;padding:10px 0 0;border-top:1px solid var(--line);display:grid;gap:9px}
+.why-list li{display:grid;grid-template-columns:18px 1fr;gap:8px;font-size:12.5px;color:var(--ink-2)}
+.why-list li::before{content:"✓";color:var(--state)}
+.why-list b{color:var(--ink);font-weight:600}
+
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.ro{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:22px 1fr;gap:2px 8px;min-width:0;background:rgba(5,9,15,.35)}
+.ro svg{grid-row:1/4;width:18px;height:18px;color:var(--muted);margin-top:2px}
+.ro .k{font:500 10.5px var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ro .v{font:600 18px/1.2 var(--f-num)}
+.ro .s{font-size:11px;color:var(--ink-2)}
+.ro[data-hot="1"]{border-color:color-mix(in srgb,var(--state) 40%,transparent)} .ro[data-hot="1"] svg,.ro[data-hot="1"] .v{color:var(--state)}
+
+/* map hero */
+.hero{padding:0;overflow:hidden;position:relative}
+#map{height:clamp(460px,64vh,700px);background:var(--bg1)}
+.map-top{position:absolute;z-index:500;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:flex-start;pointer-events:none}
+.map-top > *{pointer-events:auto}
+.map-title{padding:9px 12px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);min-width:0}
+.map-title b{display:block;font:600 13px var(--f-ui)}
+.map-title span{font-size:11.5px;color:var(--ink-2)}
+.map-top select{margin-left:auto;background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;padding:6px 8px;font-size:12px}
+.mapbox{position:relative}
+.map-legend{position:absolute;z-index:500;left:12px;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 24px);pointer-events:none}
+.chipL{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);font-size:11.5px;color:var(--ink-2);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.chipL i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chipL b{font:600 11.5px var(--f-num);color:var(--ink)}
+#mapSnow{position:absolute;inset:0;z-index:450;pointer-events:none;width:100%;height:100%}
+.routebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);font-size:12.5px;min-height:50px}
+.routebar .lbl{margin-right:4px}
+.routebar .r{padding:4px 9px;border-radius:7px;border:1px solid var(--line-2);background:var(--solid)}
+.routebar .ar{color:var(--muted)}
+.leaflet-container{background:var(--bg1);font-family:var(--f-ui)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip,.leaflet-tooltip{background:var(--solid);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.leaflet-popup-content{font-size:12px;line-height:1.45;margin:11px 13px}
+.leaflet-popup-content table{margin-top:4px;font-size:11.5px} .leaflet-popup-content td{padding:1px 4px}
+.leaflet-tooltip.hl{background:transparent;border:0;box-shadow:none;color:var(--ink-2);font:600 10px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:0;text-shadow:0 1px 3px #000}
+.leaflet-tooltip.hl::before{display:none}
+.leaflet-control-zoom{margin-top:72px!important}
+.leaflet-control-zoom a{background:var(--panel-2)!important;color:var(--ink)!important;border-color:var(--line-2)!important}
+.leaflet-control-attribution{background:rgba(5,9,15,.6)!important;color:var(--muted)!important}
+.leaflet-control-attribution a{color:var(--ink-2)!important}
+.halo{animation:halo 2.4s ease-in-out infinite}
+@keyframes halo{50%{opacity:.25}}
+path.route{stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(63,220,149,.8))}
+
+/* folded analytics */
+.details{margin-top:22px;display:grid;gap:8px}
+details{border:1px solid var(--line);border-radius:12px;background:var(--panel);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;padding:13px 18px;font-weight:500;font-size:13.5px}
+summary::-webkit-details-marker{display:none}
+summary .hint{color:var(--muted);font-size:12px;font-weight:400}
+summary::after{content:"+";margin-left:auto;font:400 18px var(--f-num);color:var(--muted);transition:transform .2s}
+details[open] summary::after{transform:rotate(45deg)}
+.dbody{padding:0 18px 18px;min-width:0}
+.note{font-size:12.5px;color:var(--muted)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.kv div{border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.kv .v{font:600 20px var(--f-num)} .kv .l{font-size:12px;color:var(--muted)}
+#chart{width:100%;height:150px;display:block;margin-top:8px}
+#chart text{fill:var(--muted);font-size:10px;font-family:var(--f-ui)}
+.cond{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2);margin-top:10px} .cond b{color:var(--ink)}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:11.5px}
+td.n{text-align:right;font-family:var(--f-num);white-space:nowrap}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.row select{background:var(--solid);border:1px solid var(--line-2);border-radius:8px;padding:6px 8px;font-size:12.5px}
+.callout{border-left:2px solid var(--state);padding:5px 12px;margin:8px 0;font-size:13px;color:var(--ink-2)} .callout b{color:var(--ink)}
+.method p{max-width:84ch;font-size:13px;color:var(--ink-2)} .method b{color:var(--ink)}
+a{color:var(--ice)}
+.sw2{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+@media (max-width:1180px){ .strip{grid-template-columns:1fr} .grid{grid-template-columns:1fr} .hero{order:-1} }
+@media (max-width:560px){ .wrap{padding-inline:16px} .status{min-width:0} #map{height:420px} }
+@media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M13.6 4.75 2.4 11.25M8 1.5 6.6 3M8 1.5 9.4 3M8 14.5 6.6 13M8 14.5l1.4-1.5"/></svg></div>
+      <div><b>Hospital Salting Advisor</b><span>Winter operations · Washington, DC · 8 emergency departments</span></div>
+    </div>
+    <nav class="seg" aria-label="Data source"><a href="#replay" id="mReplay">Storm replay · Jan 2025</a><a href="#live" id="mLive">Live forecast</a></nav>
+    <div class="src" id="src"></div>
+  </header>
+  <div id="banner"></div>
+
+  <section class="panel strip" aria-live="polite">
+    <div class="status" id="status"><span class="led"></span><div><div class="code" id="code">ANALYZING</div><div class="sub" id="codeSub">Reading forecast</div></div></div>
+    <p class="situation" id="situation">Reading the forecast…</p>
+    <div class="scrub">
+      <div class="lbl"><span>Decision time</span><b id="now"></b></div>
+      <button class="play" id="play" aria-label="Play through the forecast">▶</button>
+      <input type="range" id="slider" min="0" value="0" aria-label="Decision time">
+    </div>
+  </section>
+
+  <section class="panel timeline">
+    <div class="tl-head"><span class="lbl">Decision timeline · next 24 h</span><span class="q" id="tlq"></span></div>
+    <svg id="tl" role="img" aria-label="Decision timeline"></svg>
+  </section>
+
+  <main class="grid">
+    <div class="col">
+      <article class="panel card plan" id="plan">
+        <div class="plan-head"><span class="lbl" id="planLbl">Recommended deployment</span><span class="prio" id="prio">—</span></div>
+        <div class="headline" id="headline">—</div>
+        <div class="zones" id="zones"></div>
+        <div class="metrics" id="metrics"></div>
+        <button class="cta" id="cta">Approve deployment</button>
+        <div class="cta-note" id="ctaNote"></div>
+      </article>
+
+      <article class="panel card engine">
+        <span class="lbl">Decision engine</span>
+        <div class="out" id="engOut"></div>
+        <p id="engText"></p>
+        <div class="trace" id="trace"></div>
+        <button class="why-btn" id="whyBtn" aria-expanded="false">Why this decision? ↓</button>
+        <ul class="why-list" id="whyList" hidden></ul>
+      </article>
+
+      <article class="panel card">
+        <span class="lbl">Deciding factors</span>
+        <div class="readouts" id="readouts"></div>
+      </article>
+    </div>
+
+    <article class="panel hero">
+      <div class="map-top">
+        <div class="map-title"><b id="mapTitle">Where trucks go first</b><span id="mapSub"></span></div>
+        <select id="layer" aria-label="Map layer">
+          <option value="status">Operational status</option>
+          <option value="risk">Freeze risk if untreated</option>
+          <option value="advisor">Advisor actions this hour</option>
+          <option value="blanket">Blanket practice this hour</option>
+          <option value="saved">Salt saved so far</option>
+          <option value="cold">Cold spots (Earth Engine)</option>
+          <option value="tier">Priority tiers</option>
+        </select>
+      </div>
+      <div class="mapbox"><div id="map"></div><div class="map-legend" id="legend"></div></div>
+      <div class="routebar" id="route"></div>
+    </article>
+  </main>
+
+  <section class="details">
+    <details id="dForecast"><summary>Forecast details <span class="hint">temperatures, snowfall, conditions</span></summary>
+      <div class="dbody"><svg id="chart" preserveAspectRatio="none" role="img" aria-label="Forecast temperatures and snowfall"></svg><div class="cond" id="cond"></div></div></details>
+    <details id="dPlan"><summary>Full 24-hour plan <span class="hint">every truck pass, rate and material</span></summary>
+      <div class="dbody">
+        <div class="row"><select id="issue" aria-label="Plan window"></select><select id="hosp" aria-label="Hospital"></select></div>
+        <div id="callouts"></div>
+        <div class="tablewrap"><table id="plantbl"><thead><tr><th>When</th><th>Action</th><th>Material</th><th class="n">Lane-mi</th><th class="n">lb/lane-mi</th><th class="n">Sized for</th><th class="n">Tons</th></tr></thead><tbody></tbody></table></div>
+      </div></details>
+    <details id="dImpact"><summary>Impact vs blanket practice <span class="hint">salt saved and safety</span></summary>
+      <div class="dbody"><div class="kv" id="impact"></div><p class="note" id="sens"></p></div></details>
+    <details id="dModel"><summary>Model inputs <span class="hint">data sources, assumptions, limits</span></summary>
+      <div class="dbody method" id="method"></div></details>
+  </section>
+</div>
+
+<script>
+const D = MODE === "live" ? window.LIVE : window.REPLAY;
+const LIVE = MODE === "live" ? D && D.live : null;
+if (!D) document.body.innerHTML = `<p style="padding:24px;color:#e9f2fb">No live forecast yet. Start the demo with <code>python3 serve.py</code> and click Refresh, or run <code>python3 live_plan.py</code>.</p>`;
+const H = D.hours.length, SEG = D.segments;
+const HOSP = Object.fromEntries(D.hospitals.map(h => [h.id, h]));
+const SHORT = {mwhc:"Washington Hospital Center",cnh:"Children's National",gwu:"GW Hospital",hu:"Howard University",mgu:"Georgetown",sib:"Sibley Memorial",va:"DC VA Medical Center",chr:"Cedar Hill"};
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const mix = (a,b,k) => { const p=h=>[1,3,5].map(j=>parseInt(h.slice(j,j+2),16)); const A=p(a),B=p(b);
+  return "#"+A.map((v,j)=>Math.round(v+(B[j]-v)*k).toString(16).padStart(2,"0")).join(""); };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+const fmtT = i => new Date(D.hours[Math.min(i,H-1)]).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"numeric"});
+const fmtH = i => i >= H ? "end of forecast" : new Date(D.hours[i]).toLocaleString("en-US",{hour:"numeric",minute:"2-digit"});
+const fmtDH = i => i >= H ? "end of forecast" : new Date(D.hours[i]).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"});
+const fmtS = i => new Date(D.hours[Math.min(i,H-1)]).toLocaleString("en-US",{hour:"numeric"}).replace(" ","").toLowerCase();
+const BRIDGE_MIN = D.hours.map((_,tt)=>Math.min(...SEG.filter(s=>s.bridge).map(s=>D.seg_pavement[s.id][tt]/10)));
+const TOTAL_LM = SEG.reduce((a,s)=>a+s.lane_mi,0);
+// Truck estimate (the model plans by 3-h route cycle, not by vehicle): ~30 lane-mi per truck per pass, 8 t usable load
+const LM_PER_TRUCK = 30, TRUCK_LOAD_T = 8;
+document.getElementById(MODE === "live" ? "mLive" : "mReplay").classList.add("on");
+
+// ---------- per-strategy indexes (unchanged model output)
+const EV = {};
+for (const st of ["advisor","blanket"]) {
+  const byT = Array.from({length:H}, () => []), cum = SEG.map(() => new Float32Array(H));
+  for (const e of D.strategies[st].events) byT[e[0]].push(e);
+  const run = new Float32Array(SEG.length);
+  for (let t=0;t<H;t++){ for (const e of byT[t]) run[e[1]] += e[4]; for (let i=0;i<SEG.length;i++) cum[i][t]=run[i]; }
+  EV[st] = {byT, cum};
+}
+const evIndex = {advisor:{}, blanket:{}};
+for (const st of ["advisor","blanket"]) for (let tt=0;tt<H;tt++) for (const e of EV[st].byT[tt]) evIndex[st][tt+":"+e[1]] = e;
+const lastEventAt = (st,i,tt) => evIndex[st][tt+":"+i] || null;
+
+// ---------- freeze risk if untreated (weather + segment exposure only)
+const wetUntil = []; { let last=-99; D.weather.forEach((w,t)=>{ if(w.precip>0) last=t; wetUntil[t]= t-last < 8; }); }
+const pav = (s,t) => D.seg_pavement[s.id][t] / 10;
+function untreatedRisk(s,t){
+  if (s.tunnel) return 0;
+  const T = pav(s,t), w = D.weather[t];
+  if (T > 33) return 0;
+  if (!wetUntil[t]) return (w.dew >= T || (s.frost_prone && w.dew >= T - 2)) ? 1 : 0;
+  let r = T >= 28 ? 2 : 3;
+  if ((s.bridge || s.grade >= 6) && r < 3) r++;
+  return r;
+}
+const band = T => T>32 ? {k:"Not needed", s:"pavement above freezing"} : T>=25 ? {k:"Optimal", s:"rock salt works well (25–32°F)"}
+  : T>=20 ? {k:"Reduced", s:"rock salt slows (20–25°F)"} : T>=15 ? {k:"Weak", s:"needs CaCl₂ pre-wet (15–20°F)"} : {k:"Ineffective", s:"rock salt barely works below 15°F"};
+
+// =====================================================================================
+// DECISION LAYER — reads the model's plan and forecast at decision time t; adds no new physics
+// =====================================================================================
+function decide(t){
+  const end24 = Math.min(H, t+24), end12 = Math.min(H, t+12);
+  let ft = null;
+  for (let tt=t; tt<end24 && ft===null; tt++) if (EV.advisor.byT[tt].some(e=>e[4]>0)) ft = tt;
+  const d = {t, ft, pass:null};
+  if (ft !== null) {
+    const pe = []; for (let tt=ft; tt<Math.min(H, ft+D.route_cycle_h); tt++) EV.advisor.byT[tt].forEach(e=>{ if(e[4]>0) pe.push(e); });
+    const segs = new Map(); let lb=0, lbB=0, rmin=1e9, rmax=0, fmin=99, last=ft; const mat={}, act={}, hosp={};
+    pe.forEach(e=>{ const s=SEG[e[1]]; segs.set(s.id,s); const w=e[4]*s.lane_mi; lb+=w; rmin=Math.min(rmin,e[4]); rmax=Math.max(rmax,e[4]); fmin=Math.min(fmin,e[5]); last=Math.max(last,e[0]);
+      const m=D.materials[e[3]], a=D.actions[e[2]]; mat[m]=(mat[m]||0)+w; act[a]=(act[a]||0)+w; hosp[s.hosp]=(hosp[s.hosp]||0)+s.lane_mi; });
+    for (let tt=ft; tt<Math.min(H, ft+D.route_cycle_h); tt++) EV.blanket.byT[tt].forEach(e=>{ lbB+=e[4]*SEG[e[1]].lane_mi; });
+    const lm=[...segs.values()].reduce((a,s)=>a+s.lane_mi,0), tons=lb/2000;
+    const top = o => Object.entries(o).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+    const ordered = pe.slice().sort((a,b)=>a[0]-b[0] || SEG[b[1]].priority-SEG[a[1]].priority);
+    const roads=[]; ordered.forEach(e=>{ const s=SEG[e[1]]; const n=s.name==="(unnamed)"?null:s.name.replace(/ (Northwest|Northeast|Southeast|Southwest)$/,m=>({" Northwest":" NW"," Northeast":" NE"," Southeast":" SE"," Southwest":" SW"})[m]).replace(/ Avenue\b/," Ave").replace(/ Street\b/," St"); if(n && !roads.some(r=>r.n===n) && roads.length<3) roads.push({n, bridge:s.bridge}); });
+    d.pass = {events:pe, ordered, segs:[...segs.values()], lm, tons, tonsBlanket:lbB/2000, rmin, rmax, fmin, start:ft, end:last+1,
+      material:top(mat)[0], action:top(act)[0], hospitals:top(hosp), roads,
+      bridges:[...segs.values()].filter(s=>s.bridge).length, tier1:[...segs.values()].filter(s=>s.tier===1).reduce((a,s)=>a+s.lane_mi,0),
+      trucks:Math.max(1, Math.ceil(lm/LM_PER_TRUCK), Math.ceil(tons/TRUCK_LOAD_T))};
+  }
+  let minMed=99, minMedT=t, minB=99, minBT=t, minAll=99, minAllT=t;
+  for (let tt=t; tt<end24; tt++){ if (D.pavement_median[tt]<minMed){minMed=D.pavement_median[tt];minMedT=tt;} if (BRIDGE_MIN[tt]<minB){minB=BRIDGE_MIN[tt];minBT=tt;} }
+  SEG.forEach(s=>{ if(s.tunnel) return; for(let tt=t; tt<end24; tt++){ const v=pav(s,tt); if(v<minAll){minAll=v;minAllT=tt; d.coldRoad=s;} } });
+  let onset=null; for (let tt=t; tt<end24; tt++) if (D.weather[tt].precip>0){ onset=tt; break; }
+  let hit32=null; for (let tt=t; tt<end24; tt++) if (D.pavement_median[tt]<=32){ hit32=tt; break; }
+  let snow12=0, precip12=0, pop=0; for (let tt=t; tt<end12; tt++){ snow12+=D.weather[tt].snow; precip12+=D.weather[tt].precip; pop=Math.max(pop, D.weather[tt].pop||0); }
+  let freeze=null, frostOnly=false;
+  for (let tt=t; tt<end24 && freeze===null; tt++){ if (SEG.some(s=>untreatedRisk(s,tt)>=2)) freeze=tt; }
+  if (freeze===null) for (let tt=t; tt<end24 && freeze===null; tt++){ if (SEG.some(s=>untreatedRisk(s,tt)===1)) { freeze=tt; frostOnly=true; } }
+  Object.assign(d, {minMed, minMedT, minB, minBT, minAll, minAllT, onset, hit32, snow12, precip12, pop, freeze, frostOnly, nowSnow:D.weather[t].snow, nowPrecip:D.weather[t].precip});
+  if (ft!==null && ft-t<=1) d.state="deploy";
+  else if (ft!==null && ft-t<=12) d.state="prepare";
+  else if (ft!==null || minAll<=34 || onset!==null) d.state="monitor";
+  else d.state="clear";
+  d.priority = d.state==="deploy" ? "HIGH" : d.state==="prepare" ? (ft-t<=4 ? "HIGH" : "MEDIUM") : d.state==="monitor" ? "LOW" : "NONE";
+  return d;
+}
+const acting = s => s==="deploy" || s==="prepare";
+const hNames = arr => arr.slice(0,3).map(id=>SHORT[id]||HOSP[id].name);
+const listJoin = a => a.length<=1 ? (a[0]||"") : a.slice(0,-1).join(", ")+" and "+a[a.length-1];
+
+function situationLine(d){
+  if (d.nowPrecip>0 && d.nowSnow>0) return `Snow is falling at ${d.nowSnow.toFixed(2)} in/h and hospital-route pavement is ${Math.round(D.pavement_median[d.t])}°F, so untreated roads will ice over.`;
+  if (d.nowPrecip>0) return `Rain is falling on ${Math.round(D.pavement_median[d.t])}°F pavement; treatment must wait until it stops washing salt away.`;
+  if (d.onset!==null) return `Snow begins ${fmtDH(d.onset)}; hospital-route pavement will drop to ${Math.round(d.minMed)}°F, ${d.minMed>=25?"inside rock salt's effective range":d.minMed>=20?"where rock salt slows down":"below rock salt's effective range"}.`;
+  if (wetUntil[d.t] && d.minB<20) return `Bridge decks fall to ${Math.round(d.minB)}°F by ${fmtDH(d.minBT)} while roads are still wet, below rock salt's effective range.`;
+  if (wetUntil[d.t] && d.minMed<=32) return `Roads are still wet after the storm and pavement holds at ${Math.round(d.minMed)}°F, so refreeze is likely without top-ups.`;
+  if (d.pass && d.pass.action.startsWith("Frost")) return `The dew point meets the pavement on ${d.pass.segs.length} road segments ${fmtDH(d.pass.start)}, so black ice can form on dry roads.`;
+  if (d.minAll<=34) return `No precipitation expected; the coldest hospital road dips to ${Math.round(d.minAll)}°F ${fmtDH(d.minAllT)}.`;
+  return `No freezing conditions in the next 24 hours; the coldest hospital road stays at ${Math.round(d.minAll)}°F.`;
+}
+function engineText(d){
+  const p = d.pass;
+  if (!p) {
+    if (d.state==="clear") return `Pavement stays above freezing for 24 hours. Salt spread now would be worn off by traffic before it prevented any ice.`;
+    return `The coldest road reaches ${Math.round(d.minAll)}°F ${fmtDH(d.minAllT)}, but with no moisture on the road there is nothing to freeze yet.`;
+  }
+  const blend = p.events.some(e=>D.materials[e[3]].includes("CaCl2"));
+  const blendTxt = blend ? ` Bridges switch to CaCl₂ pre-wet: decks reach ${Math.round(Math.min(p.fmin,d.minB))}°F, where rock salt alone barely works.` : "";
+  if (d.state==="monitor") return `No deployment yet. Next treatment due ${fmtDH(p.start)}: stage ${p.trucks} truck${p.trucks>1?"s":""} and ${p.tons.toFixed(1)} t of ${p.material.toLowerCase()}.`;
+  if (p.action.startsWith("Anti-ice")) return `${d.onset!==null?`Snow starts ${fmtH(d.onset)}. `:""}Brine laid 1–4 h ahead stays on the road; brine laid earlier is worn off by traffic before the first flakes.`;
+  if (p.action.startsWith("Frost")) return `Only the ${p.segs.length} segments where the dew point meets the pavement need brine. Every other road stays dry.`;
+  if (p.action.startsWith("Refreeze")) return `Spot-treat the ${p.segs.length} segments still wet as pavement drops to ${Math.round(p.fmin)}°F; roads with enough residual salt are skipped.${blendTxt}`;
+  const cmp = p.tonsBlanket>p.tons ? ` ${p.tons.toFixed(1)} t instead of ${p.tonsBlanket.toFixed(1)} t for a fixed-rate pass.` : "";
+  return `Plow, then top up. Rates are sized for the ${Math.round(p.fmin)}°F forecast low and count salt already on the road.${cmp}${blendTxt}`;
+}
+function engineOut(d){
+  const p=d.pass;
+  if (d.state==="deploy") return `Deploy <em>now</em> · ${p.action.startsWith("Anti-ice")?"anti-ice":p.action.startsWith("Frost")?"frost brine":"plow + treat"}`;
+  if (d.state==="prepare") return `Deploy at <em>${fmtH(p.start)}</em>, not now`;
+  if (d.state==="monitor") return p ? `Hold until <em>${fmtDH(p.start)}</em>` : `Hold · <em>watch ${Math.round(d.minAll)}°F</em>`;
+  return `Hold all trucks · <em>no ice risk</em>`;
+}
+function whyList(d){
+  const p = d.pass, li=[];
+  if (p) {
+    li.push(`<b>Timing.</b> Start ${fmtDH(p.start)}, done by ${fmtH(p.end)}. ${d.onset!==null && p.start<d.onset ? `Finishes ${d.onset-p.end>=1?`${d.onset-p.end} h`:"just"} before snow starts.` : p.action.startsWith("Frost") ? "That is when the dew point reaches the coldest surfaces." : "Follows the plow cycle, so salt lands on cleared pavement."}`);
+    li.push(`<b>Scope.</b> ${p.lm.toFixed(0)} of ${TOTAL_LM.toFixed(0)} lane-miles${p.bridges?`, ${p.bridges} bridge segments`:""}. Bridges, steep grades and the last block to each ER go first.`);
+    li.push(`<b>Material.</b> ${esc(p.material)} at ${p.rmin===p.rmax?p.rmax:`${p.rmin}–${p.rmax}`} lb/lane-mile, the Minnesota band for ${band(p.fmin).s.replace(/^.*\(/,"").replace(")","")} pavement.`);
+    if (p.tonsBlanket>0) li.push(`<b>Savings.</b> ${p.tons.toFixed(1)} t vs ${p.tonsBlanket.toFixed(1)} t for blanket practice in the same hours (${Math.round(100*(1-p.tons/p.tonsBlanket))}% less), same trucks.`);
+  } else {
+    li.push(`<b>Temperature.</b> Coldest corridor road ${Math.round(d.minAll)}°F ${fmtDH(d.minAllT)}. Salt only matters at 32°F or below.`);
+    li.push(`<b>Moisture.</b> ${d.onset!==null ? `Precipitation starts ${fmtDH(d.onset)}.` : `None forecast in 24 h${LIVE?` (max ${Math.round(d.pop)}% chance)`:""}.`}`);
+  }
+  li.push(`<b>Source.</b> ${LIVE ? `NWS forecast${LIVE.drill_f?` shifted ${LIVE.drill_f}°F colder (drill)`:""}` : "Recorded Jan 5–7, 2025 storm weather"} → per-road pavement model → Minnesota salt rules. Road temperatures are modeled, not measured.`);
+  return li;
+}
+const ICON = {
+  temp:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3.5a2 2 0 0 1 4 0v8.2a3.5 3.5 0 1 1-4 0z"/><path d="M10 9v5"/></svg>',
+  snow:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10 2.5v15M3.5 6.25l13 7.5M16.5 6.25l-13 7.5"/></svg>',
+  clock:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/></svg>',
+  salt:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 8h10l-1 9H6z"/><path d="M7 8V5.5a3 3 0 0 1 6 0V8"/><path d="M9 4.5h.01M11 4.5h.01"/></svg>',
+};
+function readouts(d){
+  const tNow=D.pavement_median[d.t], tNext=D.pavement_median[Math.min(H-1,d.t+3)];
+  const arrow = tNext<tNow-0.5 ? "↓" : tNext>tNow+0.5 ? "↑" : "→";
+  const b = band(d.pass ? Math.min(d.pass.fmin, d.minMed) : d.minMed);
+  const pv = d.nowSnow>0 ? `${d.nowSnow.toFixed(2)} in/h` : d.snow12>0 ? `${d.snow12.toFixed(1)} in` : d.precip12>0 ? `${d.precip12.toFixed(2)} in` : "Dry";
+  const ps = d.nowPrecip>0 ? "snow falling now" : d.onset!==null ? `starts ${fmtDH(d.onset)}` : LIVE ? `max ${Math.round(d.pop)}% chance, 12 h` : "next 12 h";
+  return [
+    {i:"temp", k:"Road temp", v:`${Math.round(tNow)}°F ${arrow}`, s:`low ${Math.round(d.minMed)}°F ${fmtDH(d.minMedT)}`, hot:d.minMed<=32},
+    {i:"snow", k:"Precipitation", v:pv, s:ps, hot:d.nowPrecip>0||d.onset!==null},
+    {i:"clock", k:d.frostOnly?"Frost window":"Freeze window", v:d.freeze===null?"None":d.freeze===d.t?"Now":fmtH(d.freeze), s:d.freeze===null?"no ice conditions in 24 h":d.frostOnly?"dew point meets pavement":"wet pavement ≤ 32°F", hot:d.freeze!==null},
+    {i:"salt", k:"Salt effect", v:b.k, s:b.s, hot:b.k==="Weak"||b.k==="Ineffective"},
+  ];
+}
+
+// ---------- render
+let t = 0, current = null, approved = null, prevState = null, revealTimer = null, acked = null;
+function setStateAttr(s){ document.documentElement.dataset.state = s; }
+const isPlanned = () => approved && approved.t===t && current && current.pass;
+function statusText(d){
+  if (isPlanned()) return ["DEPLOYMENT PLANNED", `${d.pass.trucks} truck${d.pass.trucks>1?"s":""} · start ${fmtH(d.pass.start)}`];
+  if (d.state==="deploy") return ["ACTION REQUIRED", "Deploy now · priority high"];
+  if (d.state==="prepare") return ["ACTION REQUIRED", `Deploy at ${fmtH(d.pass.start)} · priority ${d.priority.toLowerCase()}`];
+  if (d.state==="monitor") return ["MONITORING", d.pass ? `Next treatment ${fmtDH(d.pass.start)}` : `Coldest road ${Math.round(d.minAll)}°F`];
+  return ["NO ACTION", "All corridors clear"];
+}
+function renderAll(animate){
+  const d = current = decide(t);
+  document.getElementById("now").textContent = fmtT(t);
+  document.getElementById("situation").innerHTML = `${esc(situationLine(d))}<small>${LIVE?"Forecast":"Replay"} as of ${fmtT(t)} · ${SEG.length.toLocaleString()} road segments · ${TOTAL_LM.toFixed(0)} lane-miles to ${D.hospitals.length} ERs</small>`;
+  const show = () => {
+    setStateAttr(isPlanned() ? "planned" : d.state);
+    const [code, sub] = statusText(d);
+    document.getElementById("code").textContent = code; document.getElementById("codeSub").textContent = sub;
+    document.getElementById("status").classList.remove("scan");
+    renderPlan(d, animate); drawTimeline(d); computeStatus(); paint();
+  };
+  // demo moment: entering an action state from calm plays MONITORING → ACTION REQUIRED, then reveals the plan
+  clearTimeout(revealTimer);
+  const entering = animate && acting(d.state) && !acting(prevState||"") && !REDUCED;
+  if (entering) {
+    setStateAttr("monitor");
+    document.getElementById("code").textContent = "MONITORING"; document.getElementById("codeSub").textContent = `Evaluating ${SEG.length.toLocaleString()} road segments`;
+    document.getElementById("status").classList.add("scan");
+    revealTimer = setTimeout(show, 1100);
+  } else show();
+  prevState = d.state;
+  renderEngine(d); renderReadouts(d); drawTimeline(d);
+  computeStatus(); paint(); drawRoutes(isPlanned());
+  syncMapSnow();
+  if (document.getElementById("dForecast").open){ drawChart(); conditions(); }
+}
+function renderPlan(d, animate){
+  const p = d.pass, plan = document.getElementById("plan"), planned = isPlanned();
+  const prio = document.getElementById("prio"); prio.textContent = d.priority==="NONE" ? "STANDBY" : `PRIORITY ${d.priority}`; prio.dataset.p = d.priority;
+  let lbl, head, zones, metrics, cta;
+  if (p && acting(d.state)) {
+    lbl = planned ? "Deployment planned" : "Action required";
+    head = `Treat <em>${p.lm.toFixed(1)} lane-miles</em>`;
+    zones = `Target zones: ${esc(listJoin(hNames(p.hospitals)))}`;
+    metrics = [["Deploy", `${p.trucks} truck${p.trucks>1?"s":""}`, "estimate"], ["Salt", `${p.tons.toFixed(1)} t`, p.material],
+               ["Begin", fmtH(p.start), fmtT(p.start).split(",")[0]], ["Complete before", fmtH(p.end), p.tier1>0?"ER approaches first":""]];
+    cta = planned ? "Undo approval" : "Approve deployment";
+  } else if (p) {
+    lbl = "Next deployment"; head = `Stage for <em>${fmtDH(p.start)}</em>`; zones = `Watch zones: ${esc(listJoin(hNames(p.hospitals)))}`;
+    metrics = [["Stage", `${p.trucks} truck${p.trucks>1?"s":""}`, "ready, not dispatched"], ["Salt to load", `${p.tons.toFixed(1)} t`, p.material], ["Due", fmtH(p.start), fmtT(p.start).split(",")[0]], ["Re-check", LIVE?"Next update":"+1 h", "conditions may change"]];
+    cta = "Acknowledge";
+  } else {
+    lbl = d.state==="clear" ? "No deployment" : "Monitoring"; head = `<em>Hold</em> all trucks`;
+    zones = d.coldRoad ? `Coldest road ${Math.round(d.minAll)}°F near ${esc(SHORT[d.coldRoad.hosp])}, ${fmtDH(d.minAllT)}` : "";
+    metrics = [["Deploy","0 trucks","hold at depot"], ["Salt","0 t","nothing to treat"], ["Coldest road", `${Math.round(d.minAll)}°F`, fmtDH(d.minAllT)], ["Re-check", LIVE?"Next update":"+1 h", "NWS updates hourly"]];
+    cta = "Acknowledge";
+  }
+  document.getElementById("planLbl").textContent = lbl;
+  document.getElementById("headline").innerHTML = head;
+  document.getElementById("zones").innerHTML = zones;
+  document.getElementById("metrics").innerHTML = metrics.map(([k,v,s])=>`<div class="m"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="s">${esc(s||"")}</div></div>`).join("");
+  const b = document.getElementById("cta"); b.textContent = cta; b.classList.toggle("ghost", planned || !acting(d.state));
+  document.getElementById("ctaNote").textContent = planned ? `Approved ${approved.at}. Demo only: no dispatch system is connected.` : (!acting(d.state) && acked===t ? "Acknowledged." : "");
+  if (animate) { plan.classList.remove("reveal"); void plan.offsetWidth; plan.classList.add("reveal"); }
+}
+document.getElementById("cta").onclick = () => {
+  const d = current;
+  if (!acting(d.state) || !d.pass) { acked = t; renderPlan(d,false); return; }
+  approved = isPlanned() ? null : {t, at:new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})};
+  setStateAttr(isPlanned() ? "planned" : d.state);
+  const [code, sub] = statusText(d); document.getElementById("code").textContent = code; document.getElementById("codeSub").textContent = sub;
+  renderPlan(d, false); paint(); drawRoutes(isPlanned()); drawTimeline(d);
+};
+function renderEngine(d){
+  document.getElementById("engOut").innerHTML = engineOut(d);
+  document.getElementById("engText").textContent = engineText(d);
+  const nGee = D.gee ? "10 Earth Engine variables" : "terrain + bridges";
+  document.getElementById("trace").innerHTML = [LIVE?`NWS · ${LIVE.grids.length} grid cells`:"Jan 2025 storm weather", `${SEG.length.toLocaleString()} road segments`, nGee, "Minnesota salt bands"].map(x=>`<span>${x}</span>`).join("");
+  document.getElementById("whyList").innerHTML = whyList(d).map(x=>`<li><span>${x}</span></li>`).join("");
+}
+function renderReadouts(d){
+  document.getElementById("readouts").innerHTML = readouts(d).map(x=>`<div class="ro" data-hot="${x.hot?1:0}">${ICON[x.i]}<span class="k">${x.k}</span><span class="v">${x.v}</span><span class="s">${esc(x.s)}</span></div>`).join("");
+}
+document.getElementById("whyBtn").onclick = e => { const l=document.getElementById("whyList"); l.hidden=!l.hidden; e.currentTarget.setAttribute("aria-expanded", String(!l.hidden)); e.currentTarget.textContent = l.hidden ? "Why this decision? ↓" : "Hide reasoning ↑"; };
+
+// ---------- decision timeline: why act at this exact time
+const measureCtx = document.createElement("canvas").getContext("2d");
+function drawTimeline(d){
+  const svg = document.getElementById("tl"), W = svg.clientWidth;
+  if (W < 200 || !d) return;
+  const Hh = 138, padL = 12, padR = 12, y0 = 62, end = Math.min(H-1, t+24);
+  svg.setAttribute("viewBox", `0 0 ${W} ${Hh}`);
+  const X = i => padL + (W-padL-padR) * (i - t) / Math.max(1, end - t);
+  let g = "";
+  const temps = []; for (let i=t;i<=end;i++) temps.push(D.pavement_median[i]);
+  const lo = Math.min(...temps, 28), hi = Math.max(...temps, 36), Ty = v => 12 + 32 * (1 - (v-lo)/(hi-lo));
+  if (32>=lo && 32<=hi) g += `<line x1="${padL}" x2="${W-padR}" y1="${Ty(32)}" y2="${Ty(32)}" stroke="${css("--ice")}" stroke-opacity=".35" stroke-dasharray="2 4"/><text x="${W-padR}" y="${Ty(32)-3}" text-anchor="end" font-size="9.5" fill="${css("--muted")}">32°F</text>`;
+  g += `<polyline fill="none" stroke="${css("--ice")}" stroke-opacity=".75" stroke-width="1.5" points="${temps.map((v,k)=>`${X(t+k)},${Ty(v)}`).join(" ")}"/>`;
+  g += `<text x="${padL}" y="9" font-size="9.5" fill="${css("--muted")}">typical road temperature</text>`;
+  for (let i=t;i<end;i++) if (D.weather[i].precip>0) g += `<rect x="${X(i)}" y="${y0-4}" width="${Math.max(1.5,X(i+1)-X(i))}" height="8" fill="${css("--blue")}" fill-opacity="${Math.min(0.85,0.3+D.weather[i].snow*1.3)}"/>`;
+  g += `<line x1="${padL}" x2="${W-padR}" y1="${y0}" y2="${y0}" stroke="${css("--line-2")}" stroke-width="1.5"/>`;
+  const p = d.pass;
+  if (p) { const a = X(p.start), b = X(Math.min(end, p.end));
+    g += `<rect x="${a}" y="${y0-11}" width="${Math.max(6,b-a)}" height="22" rx="5" fill="${css("--state")}" fill-opacity=".18" stroke="${css("--state")}" stroke-width="1.2"/>`; }
+  for (let i=t;i<=end;i++) if ((i-t)%3===0) g += `<line x1="${X(i)}" x2="${X(i)}" y1="${y0+12}" y2="${y0+16}" stroke="${css("--muted")}"/><text x="${X(i)}" y="${y0+28}" text-anchor="middle" font-size="10" fill="${css("--muted")}">${fmtS(i)}</text>`;
+  const pins = [{i:t, l:"Now", c:"--ink"}];
+  if (d.onset!==null && d.onset>t) pins.push({i:d.onset, l:d.snow12>0||D.weather[d.onset].snow>0?"Snow begins":"Precipitation begins", c:"--blue"});
+  if (d.hit32!==null && d.hit32>t) pins.push({i:d.hit32, l:"Pavement hits 32°F", c:"--ice"});
+  if (p) pins.push({i:p.start, l:`Treat ${fmtS(p.start)}–${fmtS(Math.min(end,p.end))}`, c:"--state", strong:true});
+  if (d.freeze!==null && d.freeze>t) pins.push({i:d.freeze, l:d.frostOnly?"Frost risk":"Freeze risk", c:"--red"});
+  if (d.minB<15 && d.minBT>t) pins.push({i:d.minBT, l:"Bridges below salt range", c:"--red"});
+  pins.sort((a,b)=>a.i-b.i || (b.strong?1:0)-(a.strong?1:0));
+  const rows = [-1e9,-1e9,-1e9];
+  pins.forEach(pn=>{
+    const x = X(pn.i), col = css(pn.c);
+    measureCtx.font = `${pn.strong?700:500} 11px Inter, -apple-system, sans-serif`;
+    const w = measureCtx.measureText(pn.l).width + 16;
+    const anchor = x - w/2 < padL ? "start" : x + w/2 > W-padR ? "end" : "middle";
+    const left = anchor==="start" ? x : anchor==="end" ? x-w : x-w/2, right = left + w;
+    let row = rows.findIndex(r => r < left); if (row < 0) row = rows.indexOf(Math.min(...rows));
+    rows[row] = right;
+    const ly = y0 + 46 + row*15;
+    g += `<circle cx="${x}" cy="${y0}" r="${pn.strong?5.5:4}" fill="${col}" stroke="${css("--bg0")}" stroke-width="2"/>`;
+    g += `<line x1="${x}" x2="${x}" y1="${y0+6}" y2="${ly-10}" stroke="${col}" stroke-opacity=".45"/>`;
+    g += `<text x="${x}" y="${ly}" text-anchor="${anchor}" font-size="11" font-weight="${pn.strong?700:500}" fill="${pn.strong?col:css("--ink-2")}">${esc(pn.l)}</text>`;
+  });
+  svg.innerHTML = g;
+  document.getElementById("tlq").textContent = p
+    ? (acting(d.state) ? `Why ${fmtH(p.start)}? ${d.onset!==null && p.start<d.onset ? "Late enough that traffic won't wear the brine off, early enough to finish before snow." : p.action.startsWith("Frost") ? "That is when the dew point meets the coldest pavement." : "It follows the plow cycle, so salt lands on cleared pavement."}` : `Next treatment window opens ${fmtDH(p.start)}.`)
+    : d.state==="clear" ? "No treatment window in the next 24 hours." : "No treatment window yet; conditions are being watched.";
+}
+
+// ---------- map hero
+const map = L.map("map", {preferCanvas:true, zoomControl:true, scrollWheelZoom:false});
+if (window.BASEMAP) {
+  const bm = {renderer:L.canvas({padding:.3}), interactive:false};
+  BASEMAP.boundary.forEach(r=>L.polygon(r,{...bm, color:css("--bm-edge"), weight:1.2, fill:true, fillColor:css("--bm-land"), fillOpacity:1}).addTo(map));
+  BASEMAP.water.forEach(r=>L.polygon(r,{...bm, stroke:false, fill:true, fillColor:css("--bm-water"), fillOpacity:1}).addTo(map));
+  L.polyline(BASEMAP.minor,{...bm, color:css("--bm-road"), weight:0.6, opacity:1}).addTo(map);
+  L.polyline(BASEMAP.major,{...bm, color:"#1d2b3c", weight:1.3, opacity:1}).addTo(map);
+  map.attributionControl.addAttribution("Map data © OpenStreetMap contributors");
+}
+const haloR = L.canvas({padding:.3}), haloGroup = L.layerGroup().addTo(map);
+const renderer = L.canvas({padding:.3});
+const lines = SEG.map(s => L.polyline(s.coords, {renderer, weight:3, opacity:.95}).addTo(map).on("click", e => segPopup(s, e.latlng)));
+const routeR = L.svg({padding:.3}), routeGroup = L.layerGroup().addTo(map);
+const frame = () => map.fitBounds(L.latLngBounds(SEG.flatMap(s=>s.coords)).pad(0.03));
+frame();
+const CLUSTER = {mwhc:"Washington Hosp. Ctr · Children's · VA", cnh:null, va:null};
+for (const h of D.hospitals) {
+  const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#05090f", weight:2, fillColor:"#e9f2fb", fillOpacity:1}).addTo(map);
+  const lab = h.id in CLUSTER ? CLUSTER[h.id] : SHORT[h.id];
+  if (lab) m.bindTooltip(lab, {permanent:true, direction:"right", offset:[8,0], className:"hl"}); else m.bindTooltip(SHORT[h.id], {direction:"top"});
+}
+
+let layer = "status", statusOf = [];
+// 3 = immediate treatment, 2 = treatment approaching, 1 = monitor, 0 = no intervention
+function computeStatus(){
+  const d = current, inPass = new Set(d.pass ? d.pass.segs.map(s=>s.id) : []);
+  const later = new Set(); for (let tt=t; tt<Math.min(H,t+24); tt++) EV.advisor.byT[tt].forEach(e=>{ if(e[4]>0) later.add(e[1]); });
+  statusOf = SEG.map(s=>{
+    if (inPass.has(s.id)) return d.state==="deploy" ? 3 : 2;
+    if (later.has(s.id)) return 2;
+    for (let tt=t; tt<Math.min(H,t+12); tt++){ if (untreatedRisk(s,tt)>=1 || pav(s,tt)<=34) return 1; }
+    return 0;
+  });
+}
+const STATUS = [{c:"--neutral", l:"No intervention"}, {c:"--blue", l:"Monitor"}, {c:"--amber", l:"Treatment approaching"}, {c:"--red", l:"Immediate treatment"}];
+const RISK = [{c:"--none", l:"OK"}, {c:"--warn", l:"Frost possible"}, {c:"--bad", l:"Wet, 28–32°F"}, {c:"--crit", l:"Wet below 28°F / bridge / steep"}];
+function matColor(m){ if(!m||m==="-") return "--none"; if(m.includes("CaCl2")) return "--blend"; if(m.includes("brine")) return "--brine"; if(m.includes("Prewet")) return "--prewet"; return "--dry"; }
+function segStyle(s,i){
+  if (layer === "status"){ const st=statusOf[i]; return {color:css(STATUS[st].c), weight:[1.6,2.6,3.4,4.2][st], opacity:[.8,.95,1,1][st]}; }
+  if (layer === "risk"){ const r=untreatedRisk(s,t); return {color:css(RISK[r].c), weight: r>=2?4:2.5, opacity:1}; }
+  if (layer === "cold"){ const c=s.cold_idx, k=Math.min(1,Math.abs(c)/2.5); return {color: c<0 ? mix(css("--none"),css("--cold"),0.2+0.8*k) : mix(css("--none"),css("--dry"),0.2+0.8*k), weight: c<-1?4:2.5, opacity:1}; }
+  if (layer === "tier") return {color: css(s.tier===1?"--bad":s.tier===2?"--accent":"--none"), weight: s.tier===1?4:2.5, opacity:1};
+  if (layer === "saved"){ const dd=EV.blanket.cum[i][t]-EV.advisor.cum[i][t], k=Math.max(0,Math.min(1,dd/1200)); return {color: dd>0?mix(css("--none"),css("--good"),0.25+0.75*k):css("--none"), weight:3, opacity:1}; }
+  const ev = lastEventAt(layer,i,t);
+  if (!ev) return {color:css("--none"), weight:2, opacity:.6};
+  return {color:css(matColor(D.materials[ev[3]])), weight: ev[4]>0 ? 3+Math.min(4,ev[4]/80) : 2, opacity:1};
+}
+function paint(){
+  lines.forEach((ln,i)=>ln.setStyle(segStyle(SEG[i],i)));
+  // pulsing glow under roads that need treatment now / soon
+  haloGroup.clearLayers();
+  if (layer==="status"){
+    const hot = SEG.filter((s,i)=>statusOf[i]>=2);
+    if (hot.length) L.polyline(hot.map(s=>s.coords), {renderer:haloR, color:css(current.state==="deploy"?"--red":"--amber"), weight:11, opacity:.28, interactive:false}).addTo(haloGroup);
+  }
+  if (haloR._container) haloR._container.classList.toggle("halo", layer==="status" && !REDUCED);
+  legend();
+  const d = current, lm=[0,0,0,0]; SEG.forEach((s,i)=>lm[statusOf[i]]+=s.lane_mi);
+  document.getElementById("mapTitle").textContent = isPlanned() ? "Deployment routes planned" : d.pass && acting(d.state) ? "Where trucks go first" : d.pass ? "Roads to watch" : "All corridors clear";
+  document.getElementById("mapSub").textContent = d.pass && acting(d.state) ? `${d.pass.lm.toFixed(0)} lane-miles need treatment · ${listJoin(hNames(d.pass.hospitals))}` : `${(lm[1]+lm[2]).toFixed(0)} lane-miles under watch`;
+  document.getElementById("route").innerHTML = d.pass && d.pass.roads.length
+    ? `<span class="lbl">Priority route</span>` + d.pass.roads.map((r,i)=>`${i?'<span class="ar">→</span>':""}<span class="r">${esc(r.n)}${r.bridge?" · bridge":""}</span>`).join("")
+    : `<span class="lbl">Priority route</span><span class="note">No roads need treatment in this window.</span>`;
+}
+function legend(){
+  let items;
+  if (layer==="status"){ const lm=[0,0,0,0]; SEG.forEach((s,i)=>lm[statusOf[i]]+=s.lane_mi); items=[3,2,1,0].map(k=>[STATUS[k].c, `${STATUS[k].l} <b>${lm[k].toFixed(0)}</b>`]); }
+  else if (layer==="risk") items = RISK.map(r=>[r.c,r.l]);
+  else if (layer==="cold") items = [["--cold","Runs colder than typical"],["--dry","Runs warmer"],["--none","Typical"]];
+  else if (layer==="tier") items = [["--bad","Tier 1: bridge, steep, last block to ER"],["--accent","Tier 2: arterial"],["--none","Tier 3: local"]];
+  else if (layer==="saved") items = [["--good","More salt saved vs blanket"]];
+  else items = [["--brine","Brine"],["--prewet","Pre-wetted salt"],["--dry","Dry salt"],["--blend","Salt + CaCl₂"],["--none","None this hour"]];
+  if (isPlanned() && layer==="status") items.unshift(["--planned","Planned route"]);
+  document.getElementById("legend").innerHTML = items.map(([c,l])=>`<span class="chipL"><i style="background:${css(c)}"></i>${l}</span>`).join("") + (layer==="status"?`<span class="chipL">lane-miles</span>`:"");
+}
+document.getElementById("layer").onchange = e => { layer = e.target.value; paint(); };
+// approved plan: treatment routes draw onto the map in priority order
+function drawRoutes(on){
+  routeGroup.clearLayers();
+  if (!on || !current.pass) return;
+  const seen = new Set(), order = current.pass.ordered.filter(e=>!seen.has(e[1]) && seen.add(e[1]));
+  order.forEach((e,k)=>{
+    const ln = L.polyline(SEG[e[1]].coords, {renderer:routeR, color:css("--planned"), weight:3.2, opacity:1, className:"route", interactive:false}).addTo(routeGroup);
+    const path = ln.getElement(); if (!path || REDUCED) return;
+    const len = path.getTotalLength(); path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+    path.style.transition = `stroke-dashoffset .7s ease ${Math.min(2.2, k*0.008).toFixed(3)}s`;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ path.style.strokeDashoffset = 0; }));
+  });
+}
+function segPopup(s, ll){
+  const i=s.id, T=pav(s,t), a=lastEventAt("advisor",i,t), st=STATUS[statusOf[i]];
+  const fx = e => e ? `${D.actions[e[2]]}${e[4]?` · ${D.materials[e[3]]} @ ${e[4]} lb/lane-mi`:""}` : "none this hour";
+  const why = Object.entries(s.why_night||{}).sort((x,y)=>x[1]-y[1]).map(([k,v])=>`<tr><td>${k}</td><td style="text-align:right">${v>0?"+":""}${v.toFixed(1)}°F</td></tr>`).join("");
+  L.popup({maxWidth:320}).setLatLng(ll).setContent(
+    `<b>${esc(s.name)}</b>${s.bridge?" · bridge":""}<br><span style="color:${css(st.c)}">● ${st.l}</span> · ${esc(HOSP[s.hosp].name)} (${s.dist_m} m)<br>
+     Pavement now <b>${T.toFixed(0)}°F</b> · air ${D.weather[t].air.toFixed(0)}°F<br>Advisor: ${fx(a)}<br>
+     <span style="color:${css("--muted")}">Runs ${s.cold_idx>0?"+":""}${s.cold_idx.toFixed(1)}°F vs typical road on freezing hours</span>${why?`<table>${why}</table>`:""}`).openOn(map);
+}
+
+// ---------- snow: page atmosphere + over the map when it is actually snowing
+const snowRate = () => current ? current.nowSnow : 0;
+const DPR = () => Math.min(2, devicePixelRatio||1);
+function makeFlakes(n, w, h){ return Array.from({length:n}, () => ({x:Math.random()*w, y:Math.random()*h, r:0.6+Math.random()*1.6, v:0.25+Math.random()*0.6, d:Math.random()*Math.PI*2})); }
+// page background: dark aerial road network (DC's real streets), radar rings, contours, cold haze
+const bg = document.getElementById("bg"), bctx = bg.getContext("2d");
+let bgStatic = null, pageFlakes = [];
+function drawBgStatic(){
+  const dpr = DPR(), w = innerWidth, h = innerHeight;
+  bg.width = w*dpr; bg.height = h*dpr;
+  const off = document.createElement("canvas"); off.width = w*dpr; off.height = h*dpr; const c = off.getContext("2d"); c.scale(dpr,dpr);
+  const g = c.createLinearGradient(0,0,0,h); g.addColorStop(0,"#081019"); g.addColorStop(1,"#04070c"); c.fillStyle=g; c.fillRect(0,0,w,h);
+  if (window.BASEMAP){
+    const lat0=38.79, lat1=39.0, lon0=-77.12, lon1=-76.91, s = Math.max(w,h)*1.25;
+    c.save(); c.translate(w*0.58,h*0.5); c.rotate(-0.32); c.lineCap="round";
+    const P = (la,lo) => [ (lo-(lon0+lon1)/2)/(lon1-lon0)*s, -(la-(lat0+lat1)/2)/(lat1-lat0)*s*0.78 ];
+    [[BASEMAP.minor,"rgba(120,170,220,0.05)",0.6],[BASEMAP.major,"rgba(143,208,255,0.10)",1.2]].forEach(([set,col,wd])=>{
+      c.strokeStyle=col; c.lineWidth=wd; c.beginPath();
+      set.forEach(l=>{ l.forEach((pt,k)=>{ const [x,y]=P(pt[0],pt[1]); k?c.lineTo(x,y):c.moveTo(x,y); }); }); c.stroke(); });
+    c.restore();
+  }
+  c.strokeStyle="rgba(143,208,255,0.05)"; c.lineWidth=1;
+  for (let r=120; r<Math.max(w,h); r+=110){ c.beginPath(); c.arc(w*0.86, h*0.12, r, 0, Math.PI*2); c.stroke(); }
+  c.strokeStyle="rgba(143,208,255,0.03)";
+  for (let k=0;k<7;k++){ c.beginPath(); c.ellipse(w*0.12, h*0.95, 160+k*70, 80+k*42, -0.3, 0, Math.PI*2); c.stroke(); }
+  const haze = c.createRadialGradient(w*0.2,-h*0.1,0,w*0.2,-h*0.1,h*1.1); haze.addColorStop(0,"rgba(120,190,255,0.14)"); haze.addColorStop(1,"rgba(120,190,255,0)");
+  c.fillStyle=haze; c.fillRect(0,0,w,h);
+  const vig = c.createRadialGradient(w/2,h/2,h*0.3,w/2,h/2,Math.max(w,h)*0.75); vig.addColorStop(0,"rgba(0,0,0,0)"); vig.addColorStop(1,"rgba(0,0,0,0.55)");
+  c.fillStyle=vig; c.fillRect(0,0,w,h);
+  bgStatic = off; pageFlakes = makeFlakes(Math.round(w*h/26000), w, h);
+}
+function bgFrame(){
+  const w = innerWidth, h = innerHeight;
+  bctx.setTransform(1,0,0,1,0,0); bctx.drawImage(bgStatic,0,0); bctx.setTransform(DPR(),0,0,DPR(),0,0);
+  const heavy = Math.min(1, snowRate()*2), n = Math.round(pageFlakes.length*(0.35+0.65*heavy));
+  bctx.fillStyle = "rgba(230,242,255,0.55)";
+  for (let k=0;k<n;k++){ const f=pageFlakes[k]; f.y+=f.v*(0.6+heavy); f.x+=Math.sin(f.d+=0.01)*0.3+0.15;
+    if (f.y>h){f.y=-4;f.x=Math.random()*w;} if (f.x>w) f.x=0; bctx.globalAlpha = 0.25+0.5*(f.r/2.2); bctx.beginPath(); bctx.arc(f.x,f.y,f.r,0,Math.PI*2); bctx.fill(); }
+  bctx.globalAlpha=1;
+}
+// map overlay snow: only while snow is falling at the decision time
+const mapEl = document.getElementById("map"), msnow = document.createElement("canvas"); msnow.id="mapSnow"; mapEl.parentElement.insertBefore(msnow, document.getElementById("legend"));
+const mctx = msnow.getContext("2d"); let mapFlakes = [], mW = 0, mH = 0;
+function sizeMapSnow(){ const r=mapEl.getBoundingClientRect(), dpr=DPR(); mW=r.width; mH=r.height;
+  msnow.width=mW*dpr; msnow.height=mH*dpr; mctx.setTransform(dpr,0,0,dpr,0,0); mapFlakes=makeFlakes(Math.round(mW*mH/5000), mW, mH); }
+function syncMapSnow(){ msnow.hidden = !(snowRate()>0) || REDUCED; }
+function mapFrame(){
+  if (msnow.hidden || !mW) return;
+  const rate=Math.min(1,snowRate()*2), n = Math.round(mapFlakes.length*(0.3+0.7*rate));
+  mctx.clearRect(0,0,mW,mH); mctx.fillStyle="rgba(235,245,255,0.75)";
+  for (let k=0;k<n;k++){ const f=mapFlakes[k]; f.y+=f.v*1.4; f.x+=0.45+Math.sin(f.d+=0.015)*0.35;
+    if (f.y>mH){f.y=-4;f.x=Math.random()*mW;} if (f.x>mW) f.x=0; mctx.globalAlpha=0.35+0.4*(f.r/2.2); mctx.beginPath(); mctx.arc(f.x,f.y,f.r*0.9,0,Math.PI*2); mctx.fill(); }
+  mctx.globalAlpha=1;
+}
+function loop(){ if (!document.hidden){ bgFrame(); mapFrame(); } requestAnimationFrame(loop); }
+
+// ---------- folded analytics (unchanged logic)
+const svgC = document.getElementById("chart");
+function drawChart(){
+  const W = svgC.clientWidth, Hh = 150, padL=34, padR=8, padT=10, padB=18;
+  if (W < padL + padR + 40) return;
+  svgC.setAttribute("viewBox", `0 0 ${W} ${Hh}`);
+  const x = i => padL + (W-padL-padR) * i/(H-1);
+  const allT = [...D.weather.map(w=>w.air), ...D.pavement_median, ...BRIDGE_MIN];
+  const tMin = Math.min(10, Math.floor(Math.min(...allT)/5)*5), tMax = Math.max(45, Math.ceil(Math.max(...allT)/5)*5 + 3), y = v => padT + (Hh-padT-padB)*(1-(v-tMin)/(tMax-tMin));
+  const ys = v => (Hh-padB) - (Hh-padT-padB)*0.55*v/0.6, bw = (W-padL-padR)/H*0.8;
+  let g = "";
+  D.weather.forEach((w,i)=>{ if(w.snow>0) g+=`<rect x="${x(i)-bw/2}" y="${ys(w.snow)}" width="${bw}" height="${Hh-padB-ys(w.snow)}" fill="${css("--snow")}"/>`; });
+  for (const [v,col] of [[32,css("--muted")],[25,css("--line-2")],[15,css("--bad")]]) { if (v<tMin) continue;
+    g+=`<line x1="${padL}" x2="${W-padR}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1"/><text x="2" y="${y(v)+3}">${v}°F</text>`; }
+  const path = (arr,col,wd,dash) => `<polyline fill="none" stroke="${col}" stroke-width="${wd}" ${dash?`stroke-dasharray="${dash}"`:""} points="${arr.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}"/>`;
+  g += path(D.weather.map(w=>w.air), css("--air"), 1.5, "4 3") + path(D.pavement_median, css("--grade"), 2) + path(BRIDGE_MIN, css("--bridge"), 2);
+  D.hours.forEach((h,i)=>{ if (h.endsWith("T00:00")||h.endsWith("T12:00")) g+=`<text x="${x(i)}" y="${Hh-4}" text-anchor="middle">${fmtT(i)}</text>`; });
+  g += `<text x="${W-padR}" y="${padT+8}" text-anchor="end"><tspan style="fill:${css("--grade")}">— typical road</tspan>  <tspan style="fill:${css("--bridge")}">— coldest bridge</tspan>  <tspan>- - air</tspan>  <tspan style="fill:${css("--blue")}">▮ snowfall</tspan></text>`;
+  g += `<line x1="${x(t)}" x2="${x(t)}" y1="${padT}" y2="${Hh-padB}" stroke="${css("--ink")}" stroke-width="1.5"/>`;
+  svgC.innerHTML = g;
+  svgC.onclick = e => { const r=svgC.getBoundingClientRect(); setT(Math.round((e.clientX-r.left-padL)/(r.width-padL-padR)*(H-1))); };
+}
+function conditions(){
+  const w = D.weather[t];
+  document.getElementById("cond").innerHTML = `<span>Air <b>${w.air.toFixed(0)}°F</b></span><span>Dew point <b>${w.dew.toFixed(0)}°F</b></span><span>Cloud <b>${Math.round(w.cloud)}%</b></span>
+    <span>Sun <b>${Math.round(w.sw)} W/m²</b></span><span>${w.snow>0?`Snow <b>${w.snow.toFixed(2)} in/h</b>`:w.precip>0?`Precip <b>${w.precip.toFixed(2)} in/h</b>`:"Dry"}</span>
+    <span>Typical road <b>${D.pavement_median[t].toFixed(0)}°F</b></span><span>Coldest bridge <b>${BRIDGE_MIN[t].toFixed(0)}°F</b></span>`;
+}
+document.getElementById("dForecast").addEventListener("toggle", e => { if (e.target.open) { drawChart(); conditions(); } });
+const issueEl = document.getElementById("issue"), hospEl = document.getElementById("hosp");
+if (LIVE) issueEl.add(new Option(`Next 24 h (from ${fmtT(0)})`, 0));
+D.hours.forEach((h,i)=>{ if (/T(06|18):00$/.test(h) && i+24<=H && i>0) issueEl.add(new Option(`${LIVE ? "From" : "Plan issued"} ${fmtT(i)}`, i)); });
+issueEl.value = [...issueEl.options].find(o=>D.hours[o.value].endsWith("01-05T18:00"))?.value ?? issueEl.options[0].value;
+if (LIVE) { const first = D.strategies.advisor.events.find(e=>e[4]>0);
+  if (first) { const o = [...issueEl.options].filter(o=>+o.value<=first[0] && first[0]<+o.value+24).pop(); if (o) issueEl.value = o.value; } }
+hospEl.add(new Option("All hospitals","all"));
+D.hospitals.forEach(h=>hospEl.add(new Option(h.name,h.id)));
+issueEl.onchange = hospEl.onchange = () => planTable();
+function planTable(){
+  const t0 = +issueEl.value, t1 = Math.min(H, t0+24), hf = hospEl.value, groups = new Map();
+  for (let tt=t0; tt<t1; tt++) for (const e of EV.advisor.byT[tt]) {
+    const s = SEG[e[1]]; if (hf!=="all" && s.hosp!==hf) continue;
+    const pass = tt < D.onset ? "pre" : Math.floor((tt - D.onset - 1) / D.route_cycle_h), k = `${pass}|${e[2]}|${e[3]}`;
+    if (!groups.has(k)) groups.set(k,{a:D.actions[e[2]], m:D.materials[e[3]], t0:tt, t1:tt, lm:0, lb:0, rmin:1e9, rmax:0, br:0, fmin:99, fmax:-99});
+    const g = groups.get(k); g.t0=Math.min(g.t0,tt); g.t1=Math.max(g.t1,tt); g.lm+=s.lane_mi; g.lb+=e[4]*s.lane_mi;
+    g.fmin=Math.min(g.fmin,e[5]); g.fmax=Math.max(g.fmax,e[5]); if (e[4]>0){ g.rmin=Math.min(g.rmin,e[4]); g.rmax=Math.max(g.rmax,e[4]); } if (s.bridge) g.br++;
+  }
+  const rows = [...groups.values()].sort((a,b)=>a.t0-b.t0), tb = document.querySelector("#plantbl tbody");
+  tb.innerHTML = rows.map(g=>`<tr data-t="${g.t0}" style="cursor:pointer"><td>${fmtT(g.t0).replace(/^\w+, /,"")}${g.t1>g.t0?`–${fmtH(g.t1+1)}`:""}</td>
+    <td>${g.a}${g.br?` <span class="note">(${g.br} bridge segs)</span>`:""}</td><td><span class="sw2" style="background:${css(matColor(g.m))}"></span>${g.m}</td>
+    <td class="n">${g.lm.toFixed(1)}</td><td class="n">${g.rmax? (g.rmin===g.rmax? g.rmax : `${g.rmin}–${g.rmax}`) : "0"}</td>
+    <td class="n">${g.fmin===g.fmax?g.fmin:`${g.fmin}–${g.fmax}`}°F</td><td class="n">${(g.lb/2000).toFixed(1)}</td></tr>`).join("") ||
+    `<tr><td colspan="7" class="note">No treatment needed in this window.</td></tr>`;
+  tb.querySelectorAll("tr[data-t]").forEach(r=>r.onclick=()=>{ setT(+r.dataset.t); document.getElementById("map").scrollIntoView({behavior:"smooth",block:"center"}); });
+  const c = [];
+  for (let tt=t0; tt<t1; tt++) if (D.hours[tt].endsWith("T07:00")) {
+    const t1s = SEG.filter(s=>s.tier===1 && (hf==="all"||s.hosp===hf));
+    const ok = t1s.filter(s=>D.strategies.advisor.risk[s.id][tt] !== "3").reduce((a,s)=>a+s.lane_mi,0), all = t1s.reduce((a,s)=>a+s.lane_mi,0);
+    c.push(`<b>7 AM shift change (${fmtT(tt).split(",").slice(0,2).join(",")}):</b> ${Math.round(100*ok/all)}% of tier-1 ER approaches modeled ice-free.`);
+  }
+  c.push(`<b>Total for this window: ${(rows.reduce((a,g)=>a+g.lb,0)/2000).toFixed(1)} t</b>${hf==="all"?"":` for ${HOSP[hf].name}`}. Select a row to jump the decision time there.`);
+  document.getElementById("callouts").innerHTML = c.map(x=>`<div class="callout">${x}</div>`).join("");
+}
+function impact(){
+  const A = D.strategies.advisor.totals, B = D.strategies.blanket.totals;
+  if (LIVE) {
+    document.getElementById("impact").innerHTML = `<div><div class="v">${A.salt_tons} t</div><div class="l">advisor salt, next ${H} h</div></div>
+      <div><div class="v">${B.salt_tons} t</div><div class="l">blanket practice, same hours${B.applications?"":" (it only salts during storms)"}</div></div>
+      <div><div class="v">${A.icy_lane_mile_hours_tier1}</div><div class="l">icy lane-mile-hours on tier-1 ER roads (modeled)</div></div>
+      <div><div class="v">${LIVE.freeze_hours} h</div><div class="l">hours the typical road is at or below 32°F</div></div>`;
+    document.getElementById("sens").textContent = "The storm replay shows the full advisor-vs-blanket comparison."; return;
+  }
+  const saved = B.salt_tons - A.salt_tons, pct = Math.round(100*saved/B.salt_tons);
+  document.getElementById("impact").innerHTML = `<div><div class="v">${pct}% less salt</div><div class="l">${A.salt_tons} t vs ${B.salt_tons} t across the Jan 2025 storm</div></div>
+    <div><div class="v">${A.icy_lane_mile_hours_tier1} / ${B.icy_lane_mile_hours_tier1}</div><div class="l">icy lane-mile-hours on tier-1 roads (advisor / blanket)</div></div>
+    <div><div class="v">~${(saved*0.607).toFixed(0)} t</div><div class="l">less chloride toward Rock Creek and the Anacostia</div></div>
+    <div><div class="v">${A.cacl_tons} t</div><div class="l">CaCl₂, only where pavement fell below ~20°F</div></div>
+    ${D.validation ? `<div><div class="v">ρ = ${D.validation.spearman}</div><div class="l">satellite check: roads flagged colder kept more snow</div></div>` : ""}`;
+  document.getElementById("sens").innerHTML = "Sensitivity to the assumed blanket rate: " + D.sensitivity.map(s=>`${s.rate} lb/lane-mi → <b>${s.saving_pct}%</b> saved`).join(" · ") + ".";
+}
+document.getElementById("method").innerHTML = `
+${LIVE ? `<p><b>Forecast.</b> ${LIVE.office}, issued ${LIVE.issued ? new Date(LIVE.issued).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "?"}, for each hospital's own 2.5 km grid cell (${LIVE.grids.length} cells). Sunshine is computed from sun position and sky cover; ground temperature is the 72-hour mean at Reagan National (${LIVE.soil_f}°F).</p>`
+      : `<p><b>Weather.</b> Recorded hourly weather for Jan 5–7, 2025 (ERA5 reanalysis via Open-Meteo), replayed as if it were the forecast.</p>`}
+<p><b>Corridors.</b> OpenStreetMap drive network: every arterial within 1.5 km of each ER plus every street within 350 m. Bridges from OSM tags.</p>
+<p><b>Pavement temperature (modeled per road, not measured).</b> Air temperature + sun reaching the road + ground heat − night-sky cooling + urban heat island − elevation + satellite warm/cold-spot adjustment, with thermal lag. Inputs from Google Earth Engine: USGS 3DEP elevation and terrain shadow, NLCD tree canopy and impervious surface, GHSL building height, surface water, MODIS and Landsat surface temperature.${D.validation?` Checked against Sentinel-2 snow after the storm: ρ = ${D.validation.spearman}.`:""}</p>
+<p><b>Decision rules.</b> Minnesota Snow &amp; Ice Control Handbook rate bands by pavement temperature, sized for the coldest hour in the next 12 h and counting residual salt. CaCl₂ pre-wet below ~20°F. Brine 1–4 h before snow. Frost brine when the dew point reaches dry pavement at or below 32°F.</p>
+<p><b>Status.</b> Action required: treatment due within 12 h (red if within 1 h, amber otherwise). Monitoring: treatment due later in 24 h, a road within 2°F of freezing, or precipitation ahead. No action: none of these. Map: red = in a pass due now, amber = in a coming pass, blue = near freezing or frost risk within 12 h, gray = no intervention.</p>
+<p><b>Truck counts are an estimate.</b> The model plans by 3-hour route cycle. Trucks = the larger of lane-miles ÷ ${LM_PER_TRUCK} and salt ÷ ${TRUCK_LOAD_T} t. Replace with DPW fleet and route data. The map's snow animation shows when snow is falling at the decision time; it is not a wind or storm-track forecast.</p>
+<p><b>Blanket baseline.</b> 40 gal/lane-mi brine the day before, then dry rock salt at 200 lb/lane-mi every plow pass, same trucks and 3-hour cycle.</p>
+<p><a href="regression.html">Open the analytics: live factor charts, what-if simulator and satellite regressions →</a></p>`;
+
+// ---------- live source + refresh (local server only)
+const src = document.getElementById("src");
+const clockTxt = () => new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+if (LIVE) {
+  const iss = LIVE.issued ? new Date(LIVE.issued).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}) : "?";
+  src.innerHTML = `<span>${STATIC ? "Snapshot ·" : "Live ·"} NWS issued ${iss}</span>` + (STATIC ? "" :
+    `<button class="btn-s" id="refresh">↻ Refresh</button><button class="btn-s" id="drillBtn" title="Rehearsal: shift the real forecast 25°F colder">Drill −25°F</button><span id="rmsg"></span>`);
+  if (LIVE.drill_f) document.getElementById("banner").innerHTML = `<div class="drill"><b>Drill, not a real forecast.</b> The NWS forecast issued ${iss} has been shifted ${LIVE.drill_f}°F colder to rehearse the plan.</div>`;
+  const go = async drill => { const msg = document.getElementById("rmsg"); msg.textContent = "Fetching…";
+    try { const r = await fetch(`/api/refresh?drill=${drill}`, {method:"POST"}); const j = await r.json(); if (!j.ok) throw new Error(j.error); location.reload(); }
+    catch (e) { msg.textContent = (e instanceof TypeError || e instanceof SyntaxError) ? "Needs the demo server (python3 serve.py)" : `NWS error: ${e.message}`; } };
+  if (!STATIC) { document.getElementById("refresh").onclick = () => go(0); document.getElementById("drillBtn").onclick = () => go(25); }
+} else src.innerHTML = `<span>Recorded weather · Jan 5–7, 2025</span>`;
+src.insertAdjacentHTML("beforeend", `<span class="clock" id="clock">${clockTxt()}</span>`);
+setInterval(()=>{ document.getElementById("clock").textContent = clockTxt(); }, 30000);
+
+// ---------- time wiring
+const slider = document.getElementById("slider"); slider.max = H-1;
+function setT(v, animate){ t = Math.max(0, Math.min(H-1, v)); slider.value = t; renderAll(animate !== false); }
+slider.oninput = () => setT(+slider.value);
+let timer=null;
+document.getElementById("play").onclick = e => { const b = e.currentTarget;
+  if (timer){ clearInterval(timer); timer=null; b.textContent="▶"; return; }
+  b.textContent="❚❚"; timer=setInterval(()=>{ if(t>=H-1){ clearInterval(timer); timer=null; b.textContent="▶"; } else setT(t+1); }, 900); };
+addEventListener("resize", () => { drawBgStatic(); sizeMapSnow(); drawTimeline(current); if (document.getElementById("dForecast").open) drawChart(); });
+
+const start = LIVE ? 0 : Math.max(0, D.hours.findIndex(h=>h.endsWith("01-05T18:00")));
+drawBgStatic(); planTable(); impact();
+setT(start, true);
+let framed = false;
+new ResizeObserver(() => { if (!mapEl.clientWidth || !mapEl.clientHeight) return; map.invalidateSize(); if (!framed){ frame(); framed = true; } sizeMapSnow(); }).observe(mapEl);
+requestAnimationFrame(() => drawTimeline(current));
+if (!REDUCED) loop(); else bgFrame();
+</script>
+</body>
+</html>
