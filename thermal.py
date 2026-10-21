@@ -52,6 +52,49 @@ def terms(w, seg, f):
     return t
 
 
+# ---- campus surface model -------------------------------------------------------------
+# Pavement temperature for a *surface* (not a road): asphalt vs concrete, at grade vs an
+# elevated deck (garage roof, ramp), and sun vs shade next to a tall building. Each term is a
+# stated assumption, not a fitted model.
+SURFACE_K = {
+    # sun = solar-absorption factor (light concrete takes less), lag = how fast it follows the
+    # air (thin/lower-mass concrete responds faster), sky = night radiative-loss factor
+    "asphalt":  {"sun": 1.00, "lag": 0.40, "sky": 1.00},
+    "concrete": {"sun": 0.82, "lag": 0.50, "sky": 0.85},
+}
+SKY_GROUND, SKY_ELEV = 4.0, 6.5   # clear-sky night loss (F) at grade / on an exposed deck
+SHADE_SUN, SHADE_SVF = 0.35, 0.60
+
+
+def surface_terms(w, s):
+    """Equilibrium temperature terms (F) for one hour on one campus surface."""
+    sk = SURFACE_K.get(s.get("surface") or "asphalt", SURFACE_K["asphalt"])
+    elevated = bool(s.get("elevated"))
+    shaded = bool(s.get("shaded"))
+    sun_x = SHADE_SUN if shaded else 1.0
+    svf = SHADE_SVF if shaded else 1.0
+    night = w["sw"] < 20
+    t = {"air": w["air"]}
+    t["sun"] = SUN_K * w["sw"] * sun_x * sk["sun"]
+    t["sky"] = -((1 - w["cloud"] / 100) * (SKY_ELEV if elevated else SKY_GROUND)) * svf if night else 0.0
+    t["ground"] = 0.0 if elevated else GROUND_K * (w["soil"] - w["air"])
+    return t
+
+
+def surface_series(wx, s):
+    """Hourly surface temperature (F). Elevated decks respond faster (thin, exposed)."""
+    sk = SURFACE_K.get(s.get("surface") or "asphalt", SURFACE_K["asphalt"])
+    lag = 0.75 if s.get("elevated") else sk["lag"]
+    out, tp = [], None
+    for w in wx:
+        eq = sum(surface_terms(w, s).values())
+        if w["snow"] > 0:
+            eq = min(eq, 32.0)           # falling snow pins the surface near freezing
+        tp = eq if tp is None else tp + lag * (eq - tp)
+        out.append(round(tp, 1))
+    return out
+
+
 def pavement_series(wx, seg, f):
     out, tp = [], None
     lag = 0.7 if seg["bridge"] else 0.4
