@@ -498,7 +498,6 @@ function drawTimeline(d){
 }
 
 // ---------- the map
-const isPhone = () => innerWidth <= 700;
 const map = L.map("map", {preferCanvas:true, zoomControl:false, scrollWheelZoom:true, zoomSnap:0.25});
 L.control.zoom({position:"bottomright"}).addTo(map);
 // real GIS basemap (OpenStreetMap/CARTO raster tiles); the offline vector basemap is kept
@@ -521,11 +520,19 @@ const haloR = L.canvas({padding:.5}), haloGroup = L.layerGroup().addTo(map);
 const renderer = L.canvas({padding:.5});
 const lines = SEG.map(s => L.polyline(s.coords, {renderer, weight:3, opacity:.95}).addTo(map).on("click", e => segPopup(s, e.latlng)));
 const routeR = L.svg({padding:.5}), routeGroup = L.layerGroup().addTo(map);
-const CORRIDOR = L.latLngBounds(SEG.flatMap(s=>s.coords));
-// frame the corridors in the space the card leaves free
-const frame = () => isPhone()
-  ? map.fitBounds(CORRIDOR, {paddingTopLeft:[16,70], paddingBottomRight:[16, (card.offsetHeight||300)+90]})
-  : map.fitBounds(CORRIDOR, {paddingTopLeft:[card.offsetWidth+50, 80], paddingBottomRight:[150, 90]});
+// the map is restricted to the hospital site — the rest of the city is not reachable
+const HOME = L.latLng(D.hospitals[0].lat, D.hospitals[0].lon);
+const SITE = L.latLngBounds([HOME.lat - 0.0035, HOME.lng - 0.0045], [HOME.lat + 0.0035, HOME.lng + 0.0045]);
+map.setMaxBounds(SITE);
+map.options.maxBoundsViscosity = 1.0;
+// zoom in until the whole viewport sits inside the site, then lock zoom-out at that view
+const frame = () => {
+  const s = map.getSize(), mpp = 156543.03392 * Math.cos(HOME.lat * Math.PI / 180);
+  const lonM = (SITE.getEast() - SITE.getWest()) * 111320 * Math.cos(HOME.lat * Math.PI / 180);
+  const latM = (SITE.getNorth() - SITE.getSouth()) * 111320;
+  map.setView(HOME, Math.min(19, Math.log2(mpp / Math.min(lonM / s.x, latM / s.y))));
+  map.setMinZoom(map.getZoom());
+};
 const CLUSTER = {};
 for (const h of D.hospitals) {
   const m = L.circleMarker([h.lat,h.lon], {renderer, radius:7, color:"#ffffff", weight:2.5, fillColor:css("--red"), fillOpacity:1}).addTo(map);

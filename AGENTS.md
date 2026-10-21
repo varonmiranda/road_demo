@@ -25,6 +25,12 @@ NWS-forecast mode (`/?mode=live` or `/index.html#live`).
   hidden `offlineBase` layer group and is swapped in automatically if four tiles fail before any
   loads (offline / blocked-CDN fallback). Tiles need internet access, like Leaflet itself. The
   hospital is a red circle marker with a permanent "Frederick Health" label.
+- **The map view is restricted to the hospital site** (`index.html`, `HOME`/`SITE`/`frame`): a
+  ~780 m box centred on Frederick Health Hospital. `frame()` zooms in until the whole viewport
+  sits inside that box (so the rest of the city is never shown), then sets `minZoom` to that
+  level, and `maxBounds = SITE` with `maxBoundsViscosity = 1.0` clamps panning to the site. The
+  whole-city corridor framing (`CORRIDOR`) was removed. Widen `SITE` (and the `build_data.py`
+  hospital extent) if a wider view is wanted again.
 - The pages hard-code those relative paths (`data/…`, `vendor/leaflet.css`) and every Python
   script points at `data/`. The original upload had these assets flattened into the repo root,
   which left the pages unable to load their data — they were moved back into `data/`/`vendor/`
