@@ -501,14 +501,22 @@ function drawTimeline(d){
 const isPhone = () => innerWidth <= 700;
 const map = L.map("map", {preferCanvas:true, zoomControl:false, scrollWheelZoom:true, zoomSnap:0.25});
 L.control.zoom({position:"bottomright"}).addTo(map);
+// real GIS basemap (OpenStreetMap/CARTO raster tiles); the offline vector basemap is kept
+// in a hidden layer group and swapped in automatically if the tiles cannot be reached.
+const offlineBase = L.layerGroup();
 if (window.BASEMAP) {
   const bm = {renderer:L.canvas({padding:.5}), interactive:false};
-  BASEMAP.boundary.forEach(r=>L.polygon(r,{...bm, color:css("--bm-edge"), weight:1.2, fill:true, fillColor:css("--bm-land"), fillOpacity:1}).addTo(map));
-  BASEMAP.water.forEach(r=>L.polygon(r,{...bm, stroke:false, fill:true, fillColor:css("--bm-water"), fillOpacity:1}).addTo(map));
-  L.polyline(BASEMAP.minor,{...bm, color:css("--bm-road"), weight:0.6, opacity:1}).addTo(map);
-  L.polyline(BASEMAP.major,{...bm, color:css("--bm-major"), weight:1.3, opacity:1}).addTo(map);
-  map.attributionControl.addAttribution("Map data © OpenStreetMap contributors");
+  BASEMAP.boundary.forEach(r=>L.polygon(r,{...bm, color:css("--bm-edge"), weight:1.2, fill:true, fillColor:css("--bm-land"), fillOpacity:1}).addTo(offlineBase));
+  BASEMAP.water.forEach(r=>L.polygon(r,{...bm, stroke:false, fill:true, fillColor:css("--bm-water"), fillOpacity:1}).addTo(offlineBase));
+  L.polyline(BASEMAP.minor,{...bm, color:css("--bm-road"), weight:0.6, opacity:1}).addTo(offlineBase);
+  L.polyline(BASEMAP.major,{...bm, color:css("--bm-major"), weight:1.3, opacity:1}).addTo(offlineBase);
 }
+map.attributionControl.addAttribution("Map data © OpenStreetMap contributors");
+const tiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  {maxZoom:19, attribution:"© Esri, Maxar, Earthstar Geographics"}).addTo(map);
+let tilesSeen = false, tileErrs = 0;
+tiles.on("tileload", ()=>{ tilesSeen = true; });
+tiles.on("tileerror", ()=>{ if (!tilesSeen && ++tileErrs >= 4){ map.removeLayer(tiles); offlineBase.addTo(map); } });
 const haloR = L.canvas({padding:.5}), haloGroup = L.layerGroup().addTo(map);
 const renderer = L.canvas({padding:.5});
 const lines = SEG.map(s => L.polyline(s.coords, {renderer, weight:3, opacity:.95}).addTo(map).on("click", e => segPopup(s, e.latlng)));
@@ -520,7 +528,7 @@ const frame = () => isPhone()
   : map.fitBounds(CORRIDOR, {paddingTopLeft:[card.offsetWidth+50, 80], paddingBottomRight:[150, 90]});
 const CLUSTER = {};
 for (const h of D.hospitals) {
-  const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#0e1b2a", weight:2, fillColor:"#ffffff", fillOpacity:1}).addTo(map);
+  const m = L.circleMarker([h.lat,h.lon], {renderer, radius:7, color:"#ffffff", weight:2.5, fillColor:css("--red"), fillOpacity:1}).addTo(map);
   const lab = h.id in CLUSTER ? CLUSTER[h.id] : SHORT[h.id];
   if (lab) m.bindTooltip(lab, {permanent:true, direction:"right", offset:[8,0], className:"hl"}); else m.bindTooltip(SHORT[h.id], {direction:"top"});
 }

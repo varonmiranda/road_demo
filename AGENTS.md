@@ -19,6 +19,12 @@ NWS-forecast mode (`/?mode=live` or `/index.html#live`).
   `--bm-major` for arterial roads), so the whole page — card, legend, Details panel, Leaflet
   controls — follows those tokens. The alternate designs (`index-v1/v2/v3-*.html`) and
   `regression.html` still use the original dark theme.
+- `index.html` draws a **real raster basemap** on top of the map: Esri *World Street Map* tiles
+  (`server.arcgisonline.com`, no API key; attribution `© Esri, Maxar, Earthstar Geographics`).
+  The offline vector basemap (`data/basemap.js` boundary/water/streets) is still built into a
+  hidden `offlineBase` layer group and is swapped in automatically if four tiles fail before any
+  loads (offline / blocked-CDN fallback). Tiles need internet access, like Leaflet itself. The
+  hospital is a red circle marker with a permanent "Frederick Health" label.
 - The pages hard-code those relative paths (`data/…`, `vendor/leaflet.css`) and every Python
   script points at `data/`. The original upload had these assets flattened into the repo root,
   which left the pages unable to load their data — they were moved back into `data/`/`vendor/`
