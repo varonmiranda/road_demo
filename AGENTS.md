@@ -12,6 +12,11 @@ the storm replay (`/`) and a live NWS-forecast mode (`/?mode=live` or `/index.ht
 - `data/` holds the generated assets the pages load (`basemap.js`, `replay.js`, `live.js`,
   `regression.js`, `segments.json`, `gee_features.json`, `weather_2025-01-05_07.json`,
   `hospital_salting_plan.kml`), and `vendor/` holds `leaflet.css`.
+- `index.html` (the main dashboard) is **light-themed**: its `:root` block carries the light
+  palette with `color-scheme: light`, and the map colors come from the `--bm-*` tokens (plus
+  `--bm-major` for arterial roads), so the whole page — card, legend, Details panel, Leaflet
+  controls — follows those tokens. The alternate designs (`index-v1/v2/v3-*.html`) and
+  `regression.html` still use the original dark theme.
 - The pages hard-code those relative paths (`data/…`, `vendor/leaflet.css`) and every Python
   script points at `data/`. The original upload had these assets flattened into the repo root,
   which left the pages unable to load their data — they were moved back into `data/`/`vendor/`

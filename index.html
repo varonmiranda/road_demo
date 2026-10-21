@@ -21,16 +21,16 @@
 </script>
 <style>
 /* Map-first decision product: the city fills the screen, one frosted card answers act / where / when / what.
-   Everything analytical lives in a slide-out Details panel. One dark winter world. */
+   Everything analytical lives in a slide-out Details panel. One light winter world. */
 :root{
-  color-scheme: dark;
-  --bg:#060b12; --map:#0a121c; --glass:rgba(12,20,31,.72); --glass-2:rgba(16,26,40,.86); --solid:#0d1622;
-  --ink:#edf4fb; --ink-2:#a9b9cb; --muted:#6e8197; --line:rgba(150,195,240,.11); --line-2:rgba(150,195,240,.22);
-  --ice:#8fd0ff; --red:#ff5252; --amber:#ffb224; --blue:#4fa3ff; --neutral:#2c3b4e; --planned:#3fdc95;
+  color-scheme: light;
+  --bg:#f2f6fb; --map:#e9eff7; --glass:rgba(255,255,255,.72); --glass-2:rgba(255,255,255,.90); --solid:#ffffff;
+  --ink:#0e1b2a; --ink-2:#41556c; --muted:#5f7288; --line:rgba(18,48,82,.10); --line-2:rgba(18,48,82,.20);
+  --ice:#0d74c4; --red:#d92d20; --amber:#b45309; --blue:#1f6fd0; --neutral:#8fa3ba; --planned:#0f9d63;
   --state:var(--ice);
-  --bm-land:#0b131e; --bm-water:#0e2135; --bm-road:#152030; --bm-edge:#22324a;
-  --brine:#2bc4bd; --prewet:#4f8ff7; --blend:#a27df0; --dry:#e3913e; --none:#2c3a4b; --warn:#ffb224; --bad:#ff7a6e; --crit:#ff5252;
-  --cold:#4fa3ff; --good:#3fdc95; --accent:#8fd0ff; --air:#6e8197; --grade:#8fd0ff; --bridge:#ff7a6e; --snow:#24496b;
+  --bm-land:#eef3f9; --bm-water:#cfe2f5; --bm-road:#dde6f0; --bm-edge:#c3d1e2; --bm-major:#b9c8da;
+  --brine:#0d9488; --prewet:#2563eb; --blend:#7c4ddb; --dry:#c2760c; --none:#a8b8ca; --warn:#b45309; --bad:#dc5b4f; --crit:#d92d20;
+  --cold:#1667d6; --good:#0f9d63; --accent:#0d74c4; --air:#5f7288; --grade:#0d74c4; --bridge:#dc5b4f; --snow:#7aa7d1;
   --f-ui:"Inter",-apple-system,"Segoe UI",Roboto,sans-serif; --f-num:"Space Grotesk","Inter",-apple-system,sans-serif;
 }
 :root[data-state="deploy"]{--state:var(--red)} :root[data-state="prepare"]{--state:var(--amber)}
@@ -41,24 +41,24 @@ html,body{height:100%;margin:0;background:var(--bg);overflow:hidden}
 body{color:var(--ink);font:14px/1.5 var(--f-ui);font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
 button,select{font:inherit;color:var(--ink)}
 :focus-visible{outline:2px solid var(--ice);outline-offset:2px;border-radius:8px}
-.glass{background:var(--glass);border:1px solid var(--line);-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.glass{background:var(--glass);border:1px solid var(--line);-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);box-shadow:0 20px 50px rgba(15,45,80,.14)}
 
 /* the map is the product */
 #map{position:fixed;inset:0;background:var(--map)}
 #mapSnow{position:fixed;inset:0;z-index:400;pointer-events:none;width:100%;height:100%}
 .vignette{position:fixed;inset:0;z-index:401;pointer-events:none;background:
-  linear-gradient(180deg,rgba(6,11,18,.85),rgba(6,11,18,0) 120px),
-  radial-gradient(120% 90% at 50% 50%,transparent 55%,rgba(3,6,10,.6))}
+  linear-gradient(180deg,rgba(242,246,251,.92),rgba(242,246,251,0) 120px),
+  radial-gradient(120% 90% at 50% 50%,transparent 55%,rgba(90,115,145,.18))}
 
 /* top bar floats over the map */
 .top{position:fixed;z-index:600;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 0}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
-.mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--line-2);background:rgba(143,208,255,.10)}
+.mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--line-2);background:rgba(13,116,196,.10)}
 .mark svg{width:16px;height:16px;color:var(--ice)}
 .brand b{font:600 14px var(--f-ui);white-space:nowrap}
 .seg{display:inline-flex;padding:3px;border-radius:11px}
 .seg a{font:500 12.5px var(--f-ui);padding:6px 12px;border-radius:8px;color:var(--ink-2);text-decoration:none;white-space:nowrap}
-.seg a.on{background:rgba(143,208,255,.16);color:var(--ink)}
+.seg a.on{background:rgba(13,116,196,.14);color:var(--ink)}
 .btn-top{border:1px solid var(--line-2);border-radius:10px;padding:7px 12px;font:500 12.5px var(--f-ui);cursor:pointer;background:var(--glass);color:var(--ink);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .btn-top:hover{border-color:var(--ice)}
 
@@ -77,7 +77,7 @@ button,select{font:inherit;color:var(--ink)}
 .what{position:relative;margin:14px 0 16px;font:500 15px var(--f-num);color:var(--ink);letter-spacing:.01em}
 .what span{color:var(--muted);margin:0 7px}
 .cta{position:relative;width:100%;padding:14px 16px;border:0;border-radius:12px;cursor:pointer;font:700 14px var(--f-num);letter-spacing:.06em;
-  background:var(--state);color:#04101c;box-shadow:0 10px 30px color-mix(in srgb,var(--state) 38%,transparent);transition:background .6s, box-shadow .6s, filter .2s}
+  background:var(--state);color:#fff;box-shadow:0 10px 30px color-mix(in srgb,var(--state) 38%,transparent);transition:background .6s, box-shadow .6s, filter .2s}
 .cta:hover{filter:brightness(1.07)}
 .cta.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-2);box-shadow:none}
 .why{position:relative;margin:14px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)}
@@ -109,14 +109,14 @@ button,select{font:inherit;color:var(--ink)}
 .leaflet-control-zoom a{background:var(--glass-2)!important;color:var(--ink)!important;border:1px solid var(--line-2)!important}
 .leaflet-control-attribution{background:transparent!important;color:var(--muted)!important;font-size:9.5px!important}
 .leaflet-control-attribution a{color:var(--ink-2)!important}
-.leaflet-popup-content-wrapper,.leaflet-popup-tip,.leaflet-tooltip{background:var(--solid);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip,.leaflet-tooltip{background:var(--solid);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 12px 30px rgba(15,45,80,.16)}
 .leaflet-popup-content{font-size:12px;line-height:1.45;margin:11px 13px}
 .leaflet-popup-content table{margin-top:4px;font-size:11.5px} .leaflet-popup-content td{padding:1px 4px}
-.leaflet-tooltip.hl{background:transparent;border:0;box-shadow:none;color:var(--ink-2);font:600 10px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:0;text-shadow:0 1px 3px #000}
+.leaflet-tooltip.hl{background:transparent;border:0;box-shadow:none;color:var(--ink-2);font:600 10px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:0;text-shadow:0 1px 3px rgba(255,255,255,.95)}
 .leaflet-tooltip.hl::before{display:none}
 .halo{animation:halo 2.4s ease-in-out infinite}
 @keyframes halo{50%{opacity:.25}}
-path.route{stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(63,220,149,.85))}
+path.route{stroke-linecap:round;filter:drop-shadow(0 0 3px rgba(15,157,99,.55))}
 
 /* details: everything secondary */
 .drawer{position:fixed;z-index:700;top:0;right:0;bottom:0;width:min(440px,100%);overflow-y:auto;padding:calc(18px + env(safe-area-inset-top,0px)) 20px calc(28px + env(safe-area-inset-bottom,0px));
@@ -152,7 +152,7 @@ td.n{text-align:right;font-family:var(--f-num);white-space:nowrap}
 .kv div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kv .v{font:600 18px var(--f-num)} .kv .l{font-size:11.5px;color:var(--muted)}
 .btn-s{background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
-.drill{margin-top:8px;padding:8px 12px;border-radius:10px;font-size:12.5px;border:1px solid var(--amber);background:rgba(255,178,36,.10)}
+.drill{margin-top:8px;padding:8px 12px;border-radius:10px;font-size:12.5px;border:1px solid var(--amber);background:rgba(180,83,9,.08)}
 a{color:var(--ice)}
 .sw2{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 
@@ -221,7 +221,7 @@ a{color:var(--ice)}
 <script>
 const D = MODE === "live" ? window.LIVE : window.REPLAY;
 const LIVE = MODE === "live" ? D && D.live : null;
-if (!D) document.body.innerHTML = `<p style="padding:24px;color:#e9f2fb">No live forecast yet. Start the demo with <code>python3 serve.py</code> and click Refresh, or run <code>python3 live_plan.py</code>.</p>`;
+if (!D) document.body.innerHTML = `<p style="padding:24px;color:var(--ink)">No live forecast yet. Start the demo with <code>python3 serve.py</code> and click Refresh, or run <code>python3 live_plan.py</code>.</p>`;
 const H = D.hours.length, SEG = D.segments;
 const HOSP = Object.fromEntries(D.hospitals.map(h => [h.id, h]));
 const SHORT = {mwhc:"Washington Hospital Center",cnh:"Children's National",gwu:"GW Hospital",hu:"Howard University",mgu:"Georgetown",sib:"Sibley Memorial",va:"DC VA Medical Center",chr:"Cedar Hill"};
@@ -506,7 +506,7 @@ if (window.BASEMAP) {
   BASEMAP.boundary.forEach(r=>L.polygon(r,{...bm, color:css("--bm-edge"), weight:1.2, fill:true, fillColor:css("--bm-land"), fillOpacity:1}).addTo(map));
   BASEMAP.water.forEach(r=>L.polygon(r,{...bm, stroke:false, fill:true, fillColor:css("--bm-water"), fillOpacity:1}).addTo(map));
   L.polyline(BASEMAP.minor,{...bm, color:css("--bm-road"), weight:0.6, opacity:1}).addTo(map);
-  L.polyline(BASEMAP.major,{...bm, color:"#1c2a3b", weight:1.3, opacity:1}).addTo(map);
+  L.polyline(BASEMAP.major,{...bm, color:css("--bm-major"), weight:1.3, opacity:1}).addTo(map);
   map.attributionControl.addAttribution("Map data © OpenStreetMap contributors");
 }
 const haloR = L.canvas({padding:.5}), haloGroup = L.layerGroup().addTo(map);
@@ -520,7 +520,7 @@ const frame = () => isPhone()
   : map.fitBounds(CORRIDOR, {paddingTopLeft:[card.offsetWidth+50, 80], paddingBottomRight:[150, 90]});
 const CLUSTER = {mwhc:"Washington Hosp. Ctr · Children's · VA", cnh:null, va:null};
 for (const h of D.hospitals) {
-  const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#05090f", weight:2, fillColor:"#edf4fb", fillOpacity:1}).addTo(map);
+  const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#0e1b2a", weight:2, fillColor:"#ffffff", fillOpacity:1}).addTo(map);
   const lab = h.id in CLUSTER ? CLUSTER[h.id] : SHORT[h.id];
   if (lab) m.bindTooltip(lab, {permanent:true, direction:"right", offset:[8,0], className:"hl"}); else m.bindTooltip(SHORT[h.id], {direction:"top"});
 }
@@ -607,7 +607,7 @@ function syncMapSnow(){ msnow.hidden = !(snowRate()>0) || REDUCED; }
 function snowFrame(){
   if (!msnow.hidden){
     const rate=Math.min(1,snowRate()*2), n = Math.round(flakes.length*(0.3+0.7*rate));
-    mctx.clearRect(0,0,mW,mH); mctx.fillStyle="rgba(235,245,255,0.8)";
+    mctx.clearRect(0,0,mW,mH); mctx.fillStyle="rgba(125,158,192,0.75)";
     for (let k=0;k<n;k++){ const f=flakes[k]; f.y+=f.v*1.3; f.x+=0.4+Math.sin(f.d+=0.015)*0.35;
       if (f.y>mH){f.y=-4;f.x=Math.random()*mW;} if (f.x>mW) f.x=0; mctx.globalAlpha=0.3+0.45*(f.r/2.3); mctx.beginPath(); mctx.arc(f.x,f.y,f.r,0,6.283); mctx.fill(); }
     mctx.globalAlpha=1;
