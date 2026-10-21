@@ -1,0 +1,9 @@
+# Python bytecode from the demo/rebuild scripts
+__pycache__/
+*.pyc
+
+# Generated at first boot by the compose command (rebuilds data/replay.js too)
+data/replay.json
+
+# Output of build_publish.py
+publish/

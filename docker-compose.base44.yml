@@ -1,0 +1,43 @@
+# Base44 sandbox environment for the DC hospital access salting advisor demo.
+#
+# The project is a static demo served by its own stdlib development server (serve.py), so the
+# compose service runs that server directly from the bind-mounted source: edits to the pages,
+# scripts and data in data/ are picked up without rebuilding anything.
+#
+#   docker compose -f docker-compose.base44.yml up -d --build   ->  http://localhost:3000
+#
+# No external credentials are required. Live mode calls api.weather.gov, which needs no API key.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.base44
+    working_dir: /app
+    # simulate.py is deterministic and rebuilds data/replay.json (the file live_plan.py reads for
+    # live mode) from the committed data/segments.json + data/weather_*.json. It is not in the repo,
+    # so generate it once on first boot; afterwards the data persists in the bind-mounted repo.
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -f data/replay.json ]; then python3 simulate.py; fi
+        exec python3 serve.py
+    environment:
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+    healthcheck:
+      # serve.py answers "/" with the demo page and POST /api/refresh with the live forecast.
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request;
+          b=urllib.request.urlopen('http://127.0.0.1:3000/',timeout=5).read();
+          assert b'Hospital Salting Advisor' in b, 'page not served'"
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    restart: on-failure

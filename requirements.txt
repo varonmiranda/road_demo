@@ -1,0 +1,5 @@
+# Runtime dependencies for the demo server: serve.py + live_plan.py (and simulate.py/thermal.py,
+# which live_plan imports). The rebuild-only tooling listed in the README (osmnx, scikit-learn,
+# statsmodels, pandas, earthengine-api) is not needed to run or view the demo.
+requests
+tzdata          # ZoneInfo("America/New_York") in live_plan.py on slim images
