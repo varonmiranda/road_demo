@@ -1,4 +1,4 @@
-"""Step 1: build the hospital access-corridor road segments for DC.
+"""Step 1: build the hospital access-corridor road segments for Frederick, MD.
 
 Output: data/segments.json  (one record per road segment with static risk features)
 
@@ -24,16 +24,10 @@ CORRIDOR_M = 1500   # network distance from the ER for arterial approaches
 APPROACH_M = 350    # every street (incl. local) this close is an ER approach
 DOOR_M = 150        # last block to the ER entrance is always tier 1
 
-# Emergency departments in DC. Trauma levels per DC DOH / ACS -- VERIFY before citing.
+# Frederick Health Hospital, 400 W 7th St, Frederick, MD (coordinates from OpenStreetMap/Nominatim).
+# Trauma level -- VERIFY before citing.
 HOSPITALS = [
-    {"id": "mwhc", "name": "MedStar Washington Hospital Center", "lat": 38.92889, "lon": -77.01469, "trauma": "Level I (adult)"},
-    {"id": "cnh",  "name": "Children's National Hospital", "lat": 38.92713, "lon": -77.01401, "trauma": "Level I (pediatric)"},
-    {"id": "gwu",  "name": "George Washington University Hospital", "lat": 38.90128, "lon": -77.05069, "trauma": "Level I (adult)"},
-    {"id": "hu",   "name": "Howard University Hospital", "lat": 38.91795, "lon": -77.02011, "trauma": "Level I (adult)"},
-    {"id": "mgu",  "name": "MedStar Georgetown University Hospital", "lat": 38.91147, "lon": -77.07523, "trauma": "Level II"},
-    {"id": "sib",  "name": "Sibley Memorial Hospital", "lat": 38.93669, "lon": -77.10896, "trauma": "Emergency dept."},
-    {"id": "va",   "name": "Washington DC VA Medical Center", "lat": 38.92904, "lon": -77.01022, "trauma": "Emergency dept."},
-    {"id": "chr",  "name": "Cedar Hill Regional Medical Center", "lat": 38.85079, "lon": -76.99428, "trauma": "Emergency dept. (Ward 8)"},
+    {"id": "fh", "name": "Frederick Health Hospital", "lat": 39.42296, "lon": -77.41485, "trauma": "Emergency dept."},
 ]
 TRAUMA_WEIGHT = {"Level I": 1.0, "Level II": 0.85, "Emergency": 0.7}
 
@@ -74,11 +68,11 @@ def fetch_elevations(points):
 
 
 def main():
-    gpath = os.path.join(CACHE, "dc_drive.graphml")
+    gpath = os.path.join(CACHE, "frederick_drive.graphml")
     if os.path.exists(gpath):
         G = ox.load_graphml(gpath)
     else:
-        G = ox.graph_from_place("Washington, DC, USA", network_type="drive", simplify=True)
+        G = ox.graph_from_place("Frederick, Maryland, USA", network_type="drive", simplify=True)
         ox.save_graphml(G, gpath)
     U = ox.convert.to_undirected(G)
 

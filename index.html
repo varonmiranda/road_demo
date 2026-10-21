@@ -224,7 +224,7 @@ const LIVE = MODE === "live" ? D && D.live : null;
 if (!D) document.body.innerHTML = `<p style="padding:24px;color:var(--ink)">No live forecast yet. Start the demo with <code>python3 serve.py</code> and click Refresh, or run <code>python3 live_plan.py</code>.</p>`;
 const H = D.hours.length, SEG = D.segments;
 const HOSP = Object.fromEntries(D.hospitals.map(h => [h.id, h]));
-const SHORT = {mwhc:"Washington Hospital Center",cnh:"Children's National",gwu:"GW Hospital",hu:"Howard University",mgu:"Georgetown",sib:"Sibley Memorial",va:"DC VA Medical Center",chr:"Cedar Hill"};
+const SHORT = {fh:"Frederick Health"};
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const mix = (a,b,k) => { const p=h=>[1,3,5].map(j=>parseInt(h.slice(j,j+2),16)); const A=p(a),B=p(b);
   return "#"+A.map((v,j)=>Math.round(v+(B[j]-v)*k).toString(16).padStart(2,"0")).join(""); };
@@ -518,7 +518,7 @@ const CORRIDOR = L.latLngBounds(SEG.flatMap(s=>s.coords));
 const frame = () => isPhone()
   ? map.fitBounds(CORRIDOR, {paddingTopLeft:[16,70], paddingBottomRight:[16, (card.offsetHeight||300)+90]})
   : map.fitBounds(CORRIDOR, {paddingTopLeft:[card.offsetWidth+50, 80], paddingBottomRight:[150, 90]});
-const CLUSTER = {mwhc:"Washington Hosp. Ctr · Children's · VA", cnh:null, va:null};
+const CLUSTER = {};
 for (const h of D.hospitals) {
   const m = L.circleMarker([h.lat,h.lon], {renderer, radius:5.5, color:"#0e1b2a", weight:2, fillColor:"#ffffff", fillOpacity:1}).addTo(map);
   const lab = h.id in CLUSTER ? CLUSTER[h.id] : SHORT[h.id];
@@ -704,7 +704,7 @@ if (LIVE) {
     catch (e) { msg.textContent = (e instanceof TypeError || e instanceof SyntaxError) ? "Needs the demo server" : `NWS error: ${e.message}`; } };
   if (!STATIC) { document.getElementById("refresh").onclick = () => go(0); document.getElementById("drillBtn").onclick = () => go(25); }
   if (LIVE.drill_f) document.getElementById("chip").parentElement.insertAdjacentHTML("afterend", `<div class="note" style="position:relative;color:var(--amber);margin-top:6px">Drill: forecast shifted ${LIVE.drill_f}°F colder</div>`);
-} else src.textContent = "Replay of recorded weather from the Jan 5–7, 2025 DC snowstorm.";
+} else src.textContent = "Replay of recorded weather from the Jan 5–7, 2025 Frederick, MD snowstorm.";
 
 // ---------- time wiring
 const slider = document.getElementById("slider"); slider.max = H-1;

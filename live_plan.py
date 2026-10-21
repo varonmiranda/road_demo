@@ -10,12 +10,12 @@ Output: data/live.js  (window.LIVE = {...}, same shape as the storm replay)
 Sources (no API key; NWS asks for a descriptive User-Agent)
   - api.weather.gov/points -> each hospital's own 2.5 km NWS forecast grid cell (Sterling, VA office)
   - gridpoint forecast: temperature, dew point, sky cover, liquid precipitation, snowfall, ice
-  - KDCA observations, past 72 h: mean air temperature as the ground-temperature input
+  - KFDK observations (Frederick Municipal Airport), past 72 h: mean air temperature as the ground-temperature input
 
 NWS does not forecast sunshine or ground temperature, which the pavement engine needs:
   - sunshine: clear-sky solar radiation from the sun's position (Haurwitz), reduced by forecast
     sky cover (Kasten-Czeplak)
-  - ground temperature: average air temperature over the past 72 h at Reagan National (KDCA)
+  - ground temperature: average air temperature over the past 72 h at Frederick Municipal (KFDK)
 """
 import json
 import math
@@ -36,7 +36,7 @@ TZ = ZoneInfo("America/New_York")
 HOURS = 48
 UA = {"User-Agent": "dc-hospital-salting-advisor (American University student project)",
       "Accept": "application/geo+json"}
-DC = (38.90, -77.02)
+SITE = (39.42296, -77.41485)   # Frederick Health Hospital
 
 
 def get(url, tries=4):
@@ -80,7 +80,7 @@ def fill(xs, default):
     return res
 
 
-def solar_ghi(dt_utc, sky_pct, lat=DC[0], lon=DC[1]):
+def solar_ghi(dt_utc, sky_pct, lat=SITE[0], lon=SITE[1]):
     """Global horizontal irradiance (W/m2): Haurwitz clear-sky x Kasten-Czeplak cloud factor."""
     doy = dt_utc.timetuple().tm_yday
     decl = math.radians(23.44) * math.sin(math.radians(360 / 365 * (doy - 81)))
@@ -97,9 +97,9 @@ def solar_ghi(dt_utc, sky_pct, lat=DC[0], lon=DC[1]):
 
 
 def ground_temp_f():
-    """Mean KDCA air temperature over the past 72 h (F) -- stand-in for shallow ground temperature."""
+    """Mean KFDK air temperature over the past 72 h (F) -- stand-in for shallow ground temperature."""
     start = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    obs = get(f"https://api.weather.gov/stations/KDCA/observations?start={start}")
+    obs = get(f"https://api.weather.gov/stations/KFDK/observations?start={start}")
     temps = [f["properties"]["temperature"]["value"] for f in obs["features"]
              if f["properties"].get("temperature", {}).get("value") is not None]
     if not temps:
@@ -139,7 +139,7 @@ def main(drill=0.0):
     hours_utc = [now + timedelta(hours=k) for k in range(HOURS)]
 
     soil, n_obs = ground_temp_f()
-    soil_src = f"KDCA mean air temperature, past 72 h ({n_obs} observations)"
+    soil_src = f"KFDK mean air temperature, past 72 h ({n_obs} observations)"
 
     grids, by_hosp, issued = {}, {}, set()
     for h in hosp:
@@ -148,7 +148,7 @@ def main(drill=0.0):
         if key not in grids:
             if soil is None:
                 soil = 45.0
-                soil_src = "fallback 45 F (no KDCA observations returned)"
+                soil_src = "fallback 45 F (no KFDK observations returned)"
             grids[key], upd = grid_weather(pt["forecastGridData"], hours_utc, soil - drill)
             for w in grids[key]:
                 w["air"] = round(w["air"] - drill, 1)

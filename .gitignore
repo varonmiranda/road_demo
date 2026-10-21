@@ -7,3 +7,6 @@ data/replay.json
 
 # Output of build_publish.py
 publish/
+
+# OSMnx HTTP cache written by the rebuild scripts
+/cache/

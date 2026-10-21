@@ -91,7 +91,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </head>
 <body>
 <header>
-  <h1>DC Hospital Access Salting Advisor</h1>
+  <h1>Frederick Hospital Access Salting Advisor</h1>
   <p id="sub"></p>
   <div class="modebar">
     <div class="seg"><a href="#replay" id="mReplay">Storm replay · Jan 2025</a><a href="#live" id="mLive">Live NWS forecast</a></div>
@@ -196,7 +196,7 @@ function matColor(m){ if(!m||m==="-") return "--none"; if(m.includes("CaCl2")) r
 
 // ---------- map
 const map = L.map("map", {preferCanvas:true, zoomControl:true});
-// offline vector basemap (data/basemap.js): DC outline, water, every drivable street. No tile server needed.
+// offline vector basemap (data/basemap.js): Frederick outline, water, every drivable street. No tile server needed.
 if (window.BASEMAP) {
   const bmR = L.canvas({padding:.3});
   const bm = {renderer:bmR, interactive:false};

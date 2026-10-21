@@ -1,4 +1,4 @@
-"""Build data/basemap.js: an offline vector basemap for DC (boundary, water, every drivable street),
+"""Build data/basemap.js: an offline vector basemap for Frederick, MD (boundary, water, every drivable street),
 so the demo map needs no tile server (works offline and inside a published artifact)."""
 import json
 import os
@@ -22,7 +22,7 @@ def rings(geom):
 
 
 def main():
-    G = ox.load_graphml(os.path.join(CACHE, "dc_drive.graphml"))
+    G = ox.load_graphml(os.path.join(CACHE, "frederick_drive.graphml"))
     U = ox.convert.to_undirected(G)
     major = {"motorway", "trunk", "primary", "secondary"}
     roads = {"major": [], "minor": []}
@@ -32,11 +32,11 @@ def main():
         pts = [(U.nodes[u]["x"], U.nodes[u]["y"]), (U.nodes[v]["x"], U.nodes[v]["y"])] if g is None else list(g.simplify(TOL).coords)
         roads["major" if str(hw).replace("_link", "") in major else "minor"].append([[round(y, 4), round(x, 4)] for x, y in pts])
 
-    boundary = rings(ox.geocode_to_gdf("Washington, DC, USA").geometry.iloc[0])
+    boundary = rings(ox.geocode_to_gdf("Frederick, Maryland, USA").geometry.iloc[0])
     water = []
     for tags in ({"natural": "water"}, {"water": "river"}):
         try:
-            gdf = ox.features_from_place("Washington, DC, USA", tags)
+            gdf = ox.features_from_place("Frederick, Maryland, USA", tags)
             for geom in gdf.geometry:
                 water += rings(geom)
         except Exception as e:

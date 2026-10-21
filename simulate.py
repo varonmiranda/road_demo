@@ -1,4 +1,4 @@
-"""Step 2: replay the Jan 6, 2025 DC snowstorm hour by hour, segment by segment,
+"""Step 2: replay the Jan 6, 2025 Frederick, MD snowstorm hour by hour, segment by segment,
 under two strategies, and write data/replay.json for the demo page.
 
   BLANKET  - typical fixed practice: brine the day before, dry rock salt at a fixed
@@ -28,7 +28,7 @@ DATA = os.path.join(HERE, "data")
 
 START = datetime(2025, 1, 5, 8)
 END = datetime(2025, 1, 7, 18)
-LAT, LON = 38.90, -77.02
+LAT, LON = 39.42296, -77.41485   # Frederick Health Hospital
 
 ROUTE_CYCLE_H = 3          # every truck route takes 3 h to complete -> offsets 0..2
 TREATED_LB = 30            # effective lb/lane-mi needed to keep a thin water film from bonding
