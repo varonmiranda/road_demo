@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="vendor/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="data/basemap.js"></script>
+<script src="data/campus.js"></script>
 <script>
   // mode lives in the #hash (the only URL state a shared link keeps); ?mode= still works locally
   const MODE = (location.hash === "#live" || new URLSearchParams(location.search).get("mode") === "live") ? "live" : "replay";
@@ -516,13 +517,44 @@ const tiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/
 let tilesSeen = false, tileErrs = 0;
 tiles.on("tileload", ()=>{ tilesSeen = true; });
 tiles.on("tileerror", ()=>{ if (!tilesSeen && ++tileErrs >= 4){ map.removeLayer(tiles); offlineBase.addTo(map); } });
+// predictions are clipped to the hospital campus: nothing outside the campus boundary is drawn
+const CAMPUS_RING = window.CAMPUS ? window.CAMPUS.boundary : null;
+function inCampus(lat, lon){
+  let inside = false;
+  for (let i = 0; i < CAMPUS_RING.length; i++){
+    const [y1,x1] = CAMPUS_RING[i], [y2,x2] = CAMPUS_RING[(i+1) % CAMPUS_RING.length];
+    if ((y1 > lat) !== (y2 > lat) && lon < (x2-x1)*(lat-y1)/(y2-y1) + x1) inside = !inside;
+  }
+  return inside;
+}
+function clipRuns(coords){
+  if (!CAMPUS_RING) return [coords];
+  const pts = [];
+  for (let i = 0; i < coords.length; i++){
+    const a = coords[i], b = coords[i+1];
+    pts.push(a);
+    if (!b) continue;
+    const n = Math.max(1, Math.ceil(Math.hypot((b[0]-a[0])*111320, (b[1]-a[1])*86000) / 8));
+    for (let k = 1; k < n; k++) pts.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n]);
+  }
+  const runs = []; let run = null;
+  for (const p of pts){
+    if (inCampus(p[0], p[1])){ if (!run){ run = [p]; runs.push(run); } else run.push(p); }
+    else run = null;
+  }
+  return runs.filter(r => r.length > 1);
+}
+if (CAMPUS_RING) L.polygon(CAMPUS_RING, {renderer:L.canvas({padding:.5}), color:css("--ice"), weight:1.4, dashArray:"5 5", fill:false, interactive:false}).addTo(map);
 const haloR = L.canvas({padding:.5}), haloGroup = L.layerGroup().addTo(map);
 const renderer = L.canvas({padding:.5});
-const lines = SEG.map(s => L.polyline(s.coords, {renderer, weight:3, opacity:.95}).addTo(map).on("click", e => segPopup(s, e.latlng)));
+const lines = SEG.map(s => { const r = clipRuns(s.coords);
+  return L.polyline(r.length ? r : [s.coords[0]], {renderer, weight:3, opacity:.95}).addTo(map).on("click", e => segPopup(s, e.latlng)); });
 const routeR = L.svg({padding:.5}), routeGroup = L.layerGroup().addTo(map);
 // the map is restricted to the hospital site — the rest of the city is not reachable
 const HOME = L.latLng(D.hospitals[0].lat, D.hospitals[0].lon);
-const SITE = L.latLngBounds([HOME.lat - 0.0035, HOME.lng - 0.0045], [HOME.lat + 0.0035, HOME.lng + 0.0045]);
+const SITE = CAMPUS_RING
+  ? L.latLngBounds(CAMPUS_RING).pad(0.05)
+  : L.latLngBounds([HOME.lat - 0.0035, HOME.lng - 0.0045], [HOME.lat + 0.0035, HOME.lng + 0.0045]);
 map.setMaxBounds(SITE);
 map.options.maxBoundsViscosity = 1.0;
 // zoom in until the whole viewport sits inside the site, then lock zoom-out at that view
@@ -569,8 +601,8 @@ function paint(){
   lines.forEach((ln,i)=>ln.setStyle(segStyle(SEG[i],i)));
   haloGroup.clearLayers();
   if (layer==="status" && current){
-    const hot = SEG.filter((s,i)=>statusOf[i]>=2);
-    if (hot.length) L.polyline(hot.map(s=>s.coords), {renderer:haloR, color:css(current.state==="deploy"?"--red":"--amber"), weight:12, opacity:.26, interactive:false}).addTo(haloGroup);
+    const hotRuns = SEG.filter((s,i)=>statusOf[i]>=2).flatMap(s=>clipRuns(s.coords));
+    if (hotRuns.length) L.polyline(hotRuns, {renderer:haloR, color:css(current.state==="deploy"?"--red":"--amber"), weight:12, opacity:.26, interactive:false}).addTo(haloGroup);
   }
   if (haloR._container) haloR._container.classList.toggle("halo", layer==="status" && !REDUCED);
   legend();
@@ -596,7 +628,9 @@ function drawRoutes(on){
   if (!on || !current.pass) return;
   const seen = new Set(), order = current.pass.ordered.filter(e=>!seen.has(e[1]) && seen.add(e[1]));
   order.forEach((e,k)=>{
-    const ln = L.polyline(SEG[e[1]].coords, {renderer:routeR, color:css("--planned"), weight:3.2, opacity:1, className:"route", interactive:false}).addTo(routeGroup);
+    const runs = clipRuns(SEG[e[1]].coords);
+    if (!runs.length) return;
+    const ln = L.polyline(runs, {renderer:routeR, color:css("--planned"), weight:3.2, opacity:1, className:"route", interactive:false}).addTo(routeGroup);
     const path = ln.getElement(); if (!path || REDUCED) return;
     const len = path.getTotalLength(); path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
     path.style.transition = `stroke-dashoffset .7s ease ${Math.min(2.2, k*0.008).toFixed(3)}s`;

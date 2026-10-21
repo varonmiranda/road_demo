@@ -2,16 +2,18 @@
 
 ## What this project is
 A static demo (no backend app, no database) served by the project's own stdlib dev server,
-`serve.py`. It replays the Jan 2025 storm across 185 Frederick, MD road segments (33.9 lane-miles)
-serving Frederick Health Hospital, and offers two modes: the storm replay (`/`) and a live
+`serve.py`. It replays the Jan 2025 storm across 222 Frederick, MD road segments (36.6 lane-miles;
+37 of them the hospital's own campus drives and parking aisles) serving Frederick Health Hospital,
+and offers two modes: the storm replay (`/`) and a live
 NWS-forecast mode (`/?mode=live` or `/index.html#live`).
 
 ## Layout
 - Pages and Python live at the repo root: `index.html` (main), `regression.html`,
   `index-v1-analytics.html`, `index-v2-decision.html`, `index-v3-console.html`, `serve.py`,
   `live_plan.py`, `simulate.py`, `thermal.py`, and the rebuild scripts.
-- `data/` holds the generated assets the pages load (`basemap.js`, `replay.js`, `live.js`,
-  `regression.js`, `segments.json`, `weather_2025-01-05_07.json`, `hospital_salting_plan.kml`),
+- `data/` holds the generated assets the pages load (`basemap.js`, `campus.js`, `replay.js`,
+  `live.js`, `regression.js`, `segments.json`, `weather_2025-01-05_07.json`,
+  `hospital_salting_plan.kml`),
   and `vendor/` holds `leaflet.css`. `gee_features.json` (Earth Engine microclimate variables) is
   deliberately **not** in the repo — see "Re-targeted to Frederick" below.
 - `index.html` (the main dashboard) is **light-themed**: its `:root` block carries the light
@@ -25,12 +27,18 @@ NWS-forecast mode (`/?mode=live` or `/index.html#live`).
   hidden `offlineBase` layer group and is swapped in automatically if four tiles fail before any
   loads (offline / blocked-CDN fallback). Tiles need internet access, like Leaflet itself. The
   hospital is a red circle marker with a permanent "Frederick Health" label.
-- **The map view is restricted to the hospital site** (`index.html`, `HOME`/`SITE`/`frame`): a
-  ~780 m box centred on Frederick Health Hospital. `frame()` zooms in until the whole viewport
+- **The map view is restricted to the hospital site** (`index.html`, `HOME`/`SITE`/`frame`): the
+  campus bounds from `data/campus.js` (+5% margin). `frame()` zooms in until the whole viewport
   sits inside that box (so the rest of the city is never shown), then sets `minZoom` to that
   level, and `maxBounds = SITE` with `maxBoundsViscosity = 1.0` clamps panning to the site. The
   whole-city corridor framing (`CORRIDOR`) was removed. Widen `SITE` (and the `build_data.py`
   hospital extent) if a wider view is wanted again.
+- **Predictions are clipped to the campus** (`index.html`, `CAMPUS_RING`/`inCampus`/`clipRuns`):
+  every prediction polyline — the segment lines, the "treat soon" halo and the approved route —
+  is cut to the campus polygon in `data/campus.js`, so no prediction is drawn outside the campus.
+  The campus boundary is also drawn as a dashed outline. `clipRuns()` densifies each polyline
+  (~8 m), keeps the runs inside the polygon and returns them as a Leaflet multi-polyline; a
+  segment with no inside geometry is drawn as a single point (invisible).
 - The pages hard-code those relative paths (`data/…`, `vendor/leaflet.css`) and every Python
   script points at `data/`. The original upload had these assets flattened into the repo root,
   which left the pages unable to load their data — they were moved back into `data/`/`vendor/`
@@ -47,18 +55,25 @@ only (400 W 7th St, Frederick, MD; 39.42296, -77.41485, from OpenStreetMap/Nomin
   ```bash
   docker compose -f docker-compose.base44.yml exec -T web pip install osmnx scikit-learn
   docker compose -f docker-compose.base44.yml exec -T -e RSD_CACHE=/tmp/rsd_cache web python3 build_data.py
+  docker compose -f docker-compose.base44.yml exec -T web python3 build_campus.py   # campus drives + boundary
   docker compose -f docker-compose.base44.yml exec -T -e RSD_CACHE=/tmp/rsd_cache web python3 build_basemap.py
   docker compose -f docker-compose.base44.yml exec -T web python3 simulate.py    # storm replay
   docker compose -f docker-compose.base44.yml exec -T web python3 export_kml.py  # Google Earth layer
   docker compose -f docker-compose.base44.yml exec -T web python3 live_plan.py   # refresh snapshot
   ```
   `build_data.py` needs `scikit-learn`: OSMnx 2.x uses it for `nearest_nodes` on an unprojected graph.
+  `build_campus.py` needs **no** osmnx — it pulls the campus bbox straight from the OpenStreetMap
+  API (Overpass is blocked in the sandbox; `api.openstreetmap.org` works) and appends the campus
+  drives/parking aisles to `segments.json` plus the boundary to `data/campus.js`. It is idempotent
+  (campus records are re-derived each run, matched by their `campus: true` flag), and must run
+  after `build_data.py` and before `simulate.py`. Adding the campus ways raised the lane-mile total
+  from 33.9 to 36.6 and the headline from 32.1/17.0 t to 34.6/18.5 t.
   OSMnx also writes its own HTTP cache to `./cache/` (gitignored) next to the working directory.
 - **The Earth Engine microclimate layer is not available in this build.** `data/gee_features.json`
   was deleted with the re-target (its values were sampled per DC segment id, so applying them to
   Frederick roads would be wrong). `thermal.py` falls back to the two-class bridge / not-bridge
   model and `simulate.py` logs "Earth Engine features: NOT FOUND - using two-class model"; the
-  headline is 32.1 t blanket vs 17.0 t advisor (47% at the 200 lb rate). To restore it, run
+  headline is 34.6 t blanket vs 18.5 t advisor (47% at the 200 lb rate). To restore it, run
   `EE_PROJECT=<project> python3 gee_features.py` with Earth Engine credentials.
 - Changing the hospital list: edit `HOSPITALS` at the top of `build_data.py`, then re-run
   `build_data.py` and `simulate.py` (plus `build_basemap.py` if the city changes).
